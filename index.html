@@ -524,6 +524,7 @@ function vHoy(){
   h+='<section class="hero empty"><p class="eyebrow">Próximo turno</p><h2>Agenda libre</h2><p>No hay turnos por atender. Tocá Agendar para cargar uno.</p></section>';
  }
  h+=quickHTML();
+ h+='<button class="btn wa block promo-cta" data-act="promo-open">'+ic("chat",18)+'Enviar promoción o flyer a varios clientes</button>';
  h+='<div class="mini"><div><small>Turnos de hoy</small><b>'+list.length+'</b><small>'+(pend?pend+" por atender":(list.length?"todo atendido":"sin turnos"))+'</small></div><div><small>Cobrado hoy</small><b>'+money(cobrado)+'</b><small>'+cobros.length+(cobros.length===1?' cobro':' cobros')+'</small></div></div>';
  h+='<section class="sec"><div class="sec-h"><h2>Hoy</h2><button class="linkbtn" data-act="go-agenda">Ver agenda</button></div>'+
   (list.length?'<div class="list">'+list.map(rowHTML).join("")+'</div>':'<div class="card empty">No hay turnos para hoy.</div>')+'</section>';
@@ -621,7 +622,7 @@ function vClientas(){
  var bsec=bds.length?'<section class="sec"><div class="sec-h"><h2>Cumpleaños próximos</h2></div><div class="list">'+bds.map(function(x){var l=waClientLink(x.c,"cumple");return '<div class="rowwa"><div class="avatar">'+ic("gift",20)+'</div><div class="who" data-act="client" data-id="'+x.c.id+'"><b>'+esc(x.c.name)+'</b><small>'+(x.n===0?"Cumple hoy":x.n===1?"Cumple mañana":"Cumple en "+x.n+" días")+' · '+fmtD(addDays(T,x.n))+'</small></div>'+(l?'<a class="btn wa sm" href="'+l+'" target="_blank" rel="noopener">'+ic("chat",18)+'Saludar</a>':'<button class="btn soft sm dis" data-act="nophone" data-id="'+x.c.id+'">Sin número</button>')+'</div>'}).join("")+'</div></section>':'';
  var ms=S.clients.map(function(c){return memCurrent(c.id)}).filter(function(m){return m&&m.end>=T&&clientById(m.cid)}).sort(function(a,b){return a.end.localeCompare(b.end)});
  var pk=ms.length?'<section class="sec"><div class="sec-h"><h2>Paquetes activos</h2><button class="linkbtn" data-act="sell-pkg" data-cid="">Vender</button></div><div class="list">'+ms.map(function(m){var c=clientById(m.cid);return '<button class="row" data-act="client" data-id="'+c.id+'"><span class="avatar">'+esc(c.name.charAt(0))+'</span><span class="who"><b>'+esc(c.name)+'</b><small>'+esc(memLine(m))+'</small></span><span class="amt">'+memUsed(m)+'/'+m.total+'</span></button>'}).join("")+'</div></section>':'';
- return '<div class="stack"><button class="btn soft block" data-act="promo-open">'+ic("chat",18)+'Mensaje a varios (promociones)</button>'+bsec+pk+'<div class="searchwrap">'+ic("search",20)+'<input id="q" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="clientlist">'+clientList("")+'</div></div>';
+ return '<div class="stack"><button class="btn soft block" data-act="promo-open">'+ic("chat",18)+'Enviar promoción o flyer a varios clientes</button>'+bsec+pk+'<div class="searchwrap">'+ic("search",20)+'<input id="q" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="clientlist">'+clientList("")+'</div></div>';
 }
 function vServicios(){
  if(!S.services.length)return '<div class="card empty">Todavía no cargaste servicios.<button class="btn primary" data-act="new-svc">'+ic("plus",18)+'Nuevo servicio</button></div>';
@@ -672,7 +673,7 @@ function vCaja(){
  var title={7:"Últimos 7 días",30:"Últimos 30 días",90:"Últimos 3 meses"}[per];
  var seg='<div class="segb" role="group" aria-label="Período">'+[7,30,90].map(function(p){return '<button data-act="per" data-p="'+p+'" aria-pressed="'+(p===per)+'">'+({7:"7 días",30:"30 días",90:"3 meses"})[p]+'</button>'}).join("")+'</div>';
  var recent=S.moves.filter(function(m){return m.date>=from&&m.date<=T}).sort(function(a,b){return b.date.localeCompare(a.date)}).slice(0,40);
- return '<div class="stack">'+seg+
+ return '<div class="stack"><div class="actions2"><button class="btn primary" data-act="new-move">'+ic("plus",18)+'Registrar ingreso</button><button class="btn soft" data-act="new-expense">'+ic("wallet",18)+'Registrar gasto</button></div>'+seg+
   '<section class="income"><div><p class="eyebrow">Ingresos · '+title+'</p><div class="num">'+money(ti)+'</div></div><div class="meta">'+(chg===null?'':'<span class="chg'+(chg<0?" neg":"")+'">'+(chg>=0?"+":"")+chg+'% vs. período anterior</span>')+'<span>'+inc.length+(inc.length===1?" cobro":" cobros")+'</span></div>'+
   '<div class="two"><div><small>Gastos</small><b>'+money(to)+'</b></div><div><small>Ganancia neta</small><b>'+money(ti-to)+'</b></div><div><small>Ticket promedio</small><b>'+money(avg)+'</b></div></div></section>'+
   '<section class="sec"><div class="sec-h"><h2>Evolución</h2></div><div class="card" style="padding:14px 12px 6px">'+chartSVG(buckets(per))+'</div></section>'+
@@ -750,7 +751,7 @@ function waPickList(q){
  }).join("")+'</div>';
 }
 function sheetWAPick(){
- openSheet('<div><p class="eyebrow">WhatsApp</p><h2>¿A quién le escribís?</h2></div><button class="btn soft block" data-act="promo-open">Mensaje a varios (promociones)</button><div class="searchwrap">'+ic("search",20)+'<input id="wq" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="wapicklist">'+waPickList("")+'</div>');
+ openSheet('<div><p class="eyebrow">WhatsApp</p><h2>¿A quién le escribís?</h2></div><button class="btn soft block" data-act="promo-open">Enviar promoción o flyer a varios clientes</button><div class="searchwrap">'+ic("search",20)+'<input id="wq" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="wapicklist">'+waPickList("")+'</div>');
 }
 function lastPrice(a){
  var l=S.moves.filter(function(m){return m.type==="in"&&m.svc===a.service&&m.amount>0}).sort(function(x,y){return y.date.localeCompare(x.date)})[0];
