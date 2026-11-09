@@ -355,7 +355,10 @@ var METHODS=["Efectivo","Transferencia","Tarjeta","Pix"];
 var brl=function(n){return "R$ "+Number(n).toLocaleString("es-AR",{minimumFractionDigits:0,maximumFractionDigits:2})};
 var mlabel=function(m){return m.method};
 var isBRL=function(){return val("f-cur")==="Reales"};
-var vcur="ARS";
+var vcur="ARS",selSids=[],selMv=[],mvOther=false;
+var selSvcs=function(){return selSids.map(function(i){return svcById(i)}).filter(Boolean)};
+var svcNames=function(m){return m.svcs&&m.svcs.length?m.svcs:String(m.svc||"Otros").split(" + ")};
+var mkMin=function(n){var h=Math.floor(n/60),r=n%60;return (h?h+" h":"")+(h&&r?" ":"")+(r?r+" min":"")};
 var mc=function(m){return m.cur==="BRL"?"BRL":"ARS"};
 var fm=function(n,c){return c==="BRL"?brl(n):money(n)};
 var fmv=function(m){return fm(m.amount,mc(m))};
@@ -476,10 +479,13 @@ function waNumber(phone){
 function waLink(phone,msg){var n=waNumber(phone);return n?"https://wa.me/"+n+"?text="+encodeURIComponent(msg):""}
 function studioName(){return (S.settings.studio||"Jessy Studio").trim()||"Jessy Studio"}
 function tplText(k){return (S.settings.tpl&&S.settings.tpl[k])||TPL_DEFAULT[k]}
+var apNames=function(a){return a.names&&a.names.length?a.names:String(a.service).split(" + ")};
+var joinY=function(l){return l.length<2?(l[0]||""):l.slice(0,-1).join(", ")+" y "+l[l.length-1]};
+var svcText=function(a){var l=(wa&&wa.aid===a.id&&wa.sel&&wa.sel.length)?wa.sel:apNames(a);return joinY(l)};
 function fill(tpl,c,a,m){
  return tpl.replace(/\{restantes\}/g,m?memLeft(m):"").replace(/\{usados\}/g,m?memUsed(m):"").replace(/\{total\}/g,m?m.total:"").replace(/\{vence\}/g,m?fmtD(m.end):"")
   .replace(/\{nombre\}/g,first(c?c.name:(a?nm(a):"")))
-  .replace(/\{servicio\}/g,a?a.service:"").replace(/\{dia\}/g,a?dayWord(a.date):"").replace(/\{hora\}/g,a?a.time:"")
+  .replace(/\{servicio\}/g,a?svcText(a):"").replace(/\{dia\}/g,a?dayWord(a.date):"").replace(/\{hora\}/g,a?a.time:"")
   .replace(/\{estudio\}/g,studioName()).replace(/ +([.,!?¿¡✨💕])/g,function(m,p){return p===" "?m:" "+p}).replace(/ {2,}/g," ");
 }
 function msgFor(kind,c,a,m){if(m===undefined)m=c?memCurrent(c.id):null;return fill(tplText(kind),c,a,m)}
@@ -666,6 +672,7 @@ function chartSVG(bk){
  });
  return svg+"</svg>";
 }
+function groupSvc(list){var o={};list.forEach(function(m){var n=svcNames(m),part=m.amount/n.length;n.forEach(function(k){o[k]=(o[k]||0)+part})});return Object.keys(o).map(function(k){return {k:k,v:o[k]}}).sort(function(a,b){return b.v-a.v})}
 function groupSum(list,keyFn){var o={};list.forEach(function(m){var k=keyFn(m);o[k]=(o[k]||0)+m.amount});return Object.keys(o).map(function(k){return {k:k,v:o[k]}}).sort(function(a,b){return b.v-a.v})}
 function brkRows(g,total,withDot){
  if(!g.length)return '<div class="card empty">Todavía no hay ingresos en este período.</div>';
@@ -690,7 +697,7 @@ function vCaja(){
   '<section class="income"><div><p class="eyebrow">Ingresos · '+title+'</p><div class="num">'+fm(ti,vcur)+'</div></div><div class="meta">'+(chg===null?'':'<span class="chg'+(chg<0?" neg":"")+'">'+(chg>=0?"+":"")+chg+'% vs. período anterior</span>')+'<span>'+inc.length+(inc.length===1?" cobro":" cobros")+'</span></div>'+
   '<div class="two"><div><small>Gastos</small><b>'+fm(to,vcur)+'</b></div><div><small>Ganancia neta</small><b>'+fm(ti-to,vcur)+'</b></div><div><small>Ticket promedio</small><b>'+fm(avg,vcur)+'</b></div></div></section>'+
   '<section class="sec"><div class="sec-h"><h2>Evolución</h2></div><div class="card" style="padding:14px 12px 6px">'+chartSVG(buckets(per))+'</div></section>'+
-  '<section class="sec"><div class="sec-h"><h2>Qué servicio deja más</h2></div>'+brkRows(groupSum(inc,function(m){return m.svc||"Otros"}),ti,true)+'</section>'+
+  '<section class="sec"><div class="sec-h"><h2>Qué servicio deja más</h2></div>'+brkRows(groupSvc(inc),ti,true)+'</section>'+
   '<section class="sec"><div class="sec-h"><h2>Cómo te pagan</h2></div>'+brkRows(groupSum(inc,function(m){return m.method}),ti,false)+'</section>'+
   '<section class="sec"><div class="sec-h"><h2>Movimientos</h2></div>'+(recent.length?'<div class="list">'+recent.map(function(m){
    return '<button class="row" data-act="move" data-id="'+m.id+'"><span class="who"><b>'+esc(m.concept)+'</b><small>'+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"short"}))+' · '+esc(mlabel(m))+'</small></span><span class="amt '+m.type+'">'+(m.type==="in"?"+":"−")+fmv(m)+'</span></button>';
@@ -735,6 +742,7 @@ function ferr(m){var e=$("#ferr");if(e)e.textContent=m}
 function opts(list,sel,fmt){return list.map(function(x){return '<option value="'+esc(x.id||x)+'"'+((x.id||x)===sel?" selected":"")+'>'+esc(fmt?fmt(x):x)+'</option>'}).join("")}
 
 /* Mensajes por WhatsApp: elegir plantilla, editar y abrir */
+function waSvcChips(){var a=wa&&wa.aid?apptById(wa.aid):null;if(!a)return "";return apNames(a).map(function(n){return '<button type="button" class="chip" data-act="wa-svc" data-n="'+esc(n)+'" aria-pressed="'+(wa.sel.indexOf(n)>-1)+'">'+esc(n)+'</button>'}).join("")}
 function sheetWA(cid,aid,kind){
  var c=clientById(cid),a=aid?apptById(aid):null;
  if(!c&&a)c=clientById(a.cid);
@@ -742,13 +750,14 @@ function sheetWA(cid,aid,kind){
  if(!a)a=nextAppt(c.id)||null;
  var kinds=(a?["recordatorio","reserva","gracias","extrano","cumple"]:["extrano","cumple"]).concat(memCurrent(c.id)?["paquete_saldo","paquete_renovar"]:[]).concat(["libre"]);
  if(kinds.indexOf(kind)<0)kind=kinds[0];
- wa={cid:c.id,aid:a?a.id:"",kind:kind,kinds:kinds,text:msgFor(kind,c,a)};
+ wa={cid:c.id,aid:a?a.id:"",kind:kind,kinds:kinds,sel:a?apNames(a).slice():[],text:""};wa.text=msgFor(kind,c,a);
  var chips=kinds.map(function(k){return '<button class="chip" data-act="wa-kind" data-k="'+k+'" aria-pressed="'+(k===kind)+'">'+TPL_NAMES[k]+'</button>'}).join("");
  var ctx=a?'<p class="sub">Turno: '+esc(a.service)+' · '+esc(dayWord(a.date))+' '+a.time+'</p>':'';
+ var svcSel=(a&&apNames(a).length>1)?'<div class="field"><span class="lab">Servicios que se nombran en el mensaje</span><div class="chips" id="wasvc">'+waSvcChips()+'</div></div>':'';
  var go=waNumber(c.phone)
   ?'<a id="wa-go" class="btn wa block" data-wa="'+(a?a.id:"")+'" href="#" target="_blank" rel="noopener">'+ic("chat",18)+'Abrir WhatsApp</a><button class="btn soft block" data-act="wa-copy">Copiar mensaje</button><p class="hint">Se abre el chat con el mensaje escrito. Si WhatsApp no muestra los emojis, tocá Copiar mensaje y pegalo en el chat.</p><button class="btn soft block" data-act="home">Listo, volver al inicio</button>'
   :'<p class="note">Falta el número de WhatsApp de '+esc(c.name)+'.</p><button class="btn primary block" data-act="client" data-id="'+c.id+'">Cargar número</button>';
- openSheet('<div class="sh-head"><div><p class="eyebrow">Escribir por WhatsApp</p><h2>'+esc(c.name)+'</h2>'+ctx+'</div><div class="avatar">'+esc(c.name.charAt(0))+'</div></div><div class="chips" role="group" aria-label="Tipo de mensaje">'+chips+'</div><div class="field"><label for="wa-text">Mensaje</label><textarea id="wa-text">'+esc(wa.text)+'</textarea></div>'+go);
+ openSheet('<div class="sh-head"><div><p class="eyebrow">Escribir por WhatsApp</p><h2>'+esc(c.name)+'</h2>'+ctx+'</div><div class="avatar">'+esc(c.name.charAt(0))+'</div></div><div class="chips" role="group" aria-label="Tipo de mensaje">'+chips+'</div>'+svcSel+'<div class="field"><label for="wa-text">Mensaje</label><textarea id="wa-text">'+esc(wa.text)+'</textarea></div>'+go);
  updWA();
 }
 function updWA(){
@@ -804,42 +813,47 @@ function freeSlots(date,min,exclude){
  return out;
 }
 function slotsHTML(){
- var date=val("f-date"),s=svcById(val("f-svc")),cur=val("f-time"),ex=($("#f-save")&&$("#f-save").dataset.id)||"";
- if(!date||!s)return "";
- var sl=freeSlots(date,s.min,ex);
+ var date=val("f-date"),ss=selSvcs(),tm=ss.reduce(function(t,x){return t+x.min},0),cur=val("f-time"),ex=($("#f-save")&&$("#f-save").dataset.id)||"";
+ if(!date||!ss.length)return "";
+ var sl=freeSlots(date,tm,ex);
  if(!sl.length)return '<p class="hint">No quedan horarios libres ese día dentro del horario de atención. Podés elegir otra hora a mano.</p>';
  return '<div class="chips" role="group" aria-label="Horarios libres">'+sl.map(function(t){return '<button class="chip" data-act="slot" data-t="'+t+'" aria-pressed="'+(t===cur)+'">'+t+'</button>'}).join("")+'</div>';
 }
 function refreshSlots(){var e=$("#slots");if(e)e.innerHTML=slotsHTML()}
+function svcChipsHTML(){return S.services.map(function(x){return '<button type="button" class="chip" data-act="svc-toggle" data-id="'+x.id+'" aria-pressed="'+(selSids.indexOf(x.id)>-1)+'">'+esc(x.name)+'</button>'}).join("")}
+function refreshSvc(){var c=$("#svcchips");if(c)c.innerHTML=svcChipsHTML();var t=$("#svctot"),ss=selSvcs();if(t)t.textContent=ss.length>1?"Son "+ss.length+" servicios · duración total "+mkMin(ss.reduce(function(a,x){return a+x.min},0)):"";refreshSlots()}
+function mvChipsHTML(){return S.services.map(function(x){return '<button type="button" class="chip" data-act="mv-toggle" data-n="'+esc(x.name)+'" aria-pressed="'+(selMv.indexOf(x.name)>-1)+'">'+esc(x.name)+'</button>'}).join("")+'<button type="button" class="chip" data-act="mv-other" aria-pressed="'+mvOther+'">Otro…</button>'}
 function sheetApptForm(id,pre){
  pre=pre||{};var a=id?apptById(id):null;ack=false;
  var name=a?nm(a):(pre.name||""),c=a?clientById(a.cid):(pre.cid?clientById(pre.cid):null);
  var phone=c?c.phone:"",sid=a?a.sid:(pre.sid||(S.services[0]&&S.services[0].id)),date=a?a.date:(pre.date||(selDate<T0()?T0():selDate)),time=a?a.time:(pre.time||"");
+ selSids=(a&&a.sids&&a.sids.length?a.sids.slice():[sid]).filter(function(i){return svcById(i)});if(!selSids.length&&S.services[0])selSids=[S.services[0].id];
  if(!S.services.length){openSheet('<h2>Primero cargá un servicio</h2><p class="sub">Para agendar un turno necesitás al menos un servicio con precio y duración.</p><button class="btn primary block" data-act="new-svc">Cargar servicio</button>');return}
  openSheet('<h2>'+(a?"Editar turno":"Nuevo turno")+'</h2><div class="form">'+
   '<div class="field"><label for="f-name">Cliente</label><input id="f-name" list="clist" autocomplete="off" autocapitalize="words" value="'+esc(name)+'" placeholder="Nombre" '+(a||name?"":"autofocus")+'></div>'+
   '<div class="field"><label for="f-phone">WhatsApp</label><input id="f-phone" type="tel" inputmode="tel" value="'+esc(phone)+'" placeholder="11 5555-5555"></div>'+
-  '<div class="field"><label for="f-svc">Servicio</label><select id="f-svc">'+opts(S.services,sid,function(s){return s.name})+'</select></div>'+
+  '<div class="field"><span class="lab">Servicios (podés marcar varios)</span><div class="chips" id="svcchips">'+svcChipsHTML()+'</div><p class="hint" id="svctot"></p></div>'+
   '<div class="fgrid"><div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" value="'+date+'"></div><div class="field"><label for="f-time">Hora</label><input id="f-time" type="time" value="'+time+'"></div></div>'+
   '<div class="field"><span class="lab">Horarios libres</span><div id="slots"></div></div>'+
   '<div class="field"><label for="f-note">Nota (opcional)</label><input id="f-note" value="'+esc(a?a.note:"")+'" placeholder="Ej: trae diseño de referencia"></div>'+
   '<p id="ferr" class="ferr" role="alert"></p>'+
   '<button id="f-save" class="btn primary block" data-act="save-appt" data-id="'+(a?a.id:"")+'">Guardar turno</button></div>');
- refreshSlots();
+ refreshSvc();
 }
 function saveAppt(id){
- var name=val("f-name").trim(),phone=val("f-phone").trim(),sid=val("f-svc"),date=val("f-date"),time=val("f-time"),note=val("f-note").trim();
+ var name=val("f-name").trim(),phone=val("f-phone").trim(),date=val("f-date"),time=val("f-time"),note=val("f-note").trim();
  if(!name)return ferr("Escribí el nombre del cliente.");
  if(!date)return ferr("Elegí la fecha.");
  if(!time)return ferr("Elegí la hora: tocá un horario libre o escribila.");
- var s=svcById(sid);if(!s)return ferr("Elegí un servicio.");
+ var ss=selSvcs();if(!ss.length)return ferr("Elegí al menos un servicio.");
+ var s={name:ss.map(function(x){return x.name}).join(" + "),id:ss[0].id,min:ss.reduce(function(t,x){return t+x.min},0),price:ss.reduce(function(t,x){return t+x.price},0)};
  var clash=S.appts.filter(function(x){return x.id!==id&&live(x)&&x.date===date&&mins(x.time)<mins(time)+s.min&&mins(time)<mins(x.time)+x.min})[0];
  if(clash&&!ack){ack=true;ferr("Se superpone con "+nm(clash)+" a las "+clash.time+". Tocá de nuevo para guardar igual.");$("#f-save").textContent="Guardar igual";return}
  var c=S.clients.filter(function(x){return x.name.toLowerCase()===name.toLowerCase()})[0];
  if(!c){c={id:uid(),name:name,phone:phone,service:s.name,birthday:"",notes:""};S.clients.push(c)}else if(phone){c.phone=phone}
  var a=id?apptById(id):null,created=!a;
- if(a){a.date=date;a.time=time;a.cid=c.id;a.name=c.name;a.service=s.name;a.sid=s.id;a.min=s.min;if(a.status!=="done")a.price=s.price;a.note=note;a.reminded=false}
- else{a={id:uid(),date:date,time:time,cid:c.id,name:c.name,service:s.name,sid:s.id,min:s.min,price:s.price,status:"pending",note:note,reminded:false};S.appts.push(a)}
+ if(a){a.date=date;a.time=time;a.cid=c.id;a.name=c.name;a.service=s.name;a.sid=s.id;a.sids=ss.map(function(x){return x.id});a.names=ss.map(function(x){return x.name});a.min=s.min;if(a.status!=="done")a.price=s.price;a.note=note;a.reminded=false}
+ else{a={id:uid(),date:date,time:time,cid:c.id,name:c.name,service:s.name,sid:s.id,sids:ss.map(function(x){return x.id}),names:ss.map(function(x){return x.name}),min:s.min,price:s.price,status:"pending",note:note,reminded:false};S.appts.push(a)}
  selDate=date;closeSheet();render();
  if(waNumber(c.phone))sheetWA(c.id,a.id,"reserva");else toast(created?"Turno guardado":"Turno actualizado");
 }
@@ -944,24 +958,27 @@ function sheetMove(id,pt){
   openSheet('<div class="sh-head"><div><p class="eyebrow">'+(m.type==="in"?"Ingreso":"Gasto")+' · '+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"long"}))+'</p><h2>'+esc(m.concept)+'</h2><p class="sub">'+esc(mlabel(m))+'</p></div><span class="amt '+m.type+'" style="font-size:20px">'+(m.type==="in"?"+":"−")+fmv(m)+'</span></div><button class="btn danger block" data-act="reveal" data-target="delbox">Eliminar movimiento</button><div id="delbox" class="confirmbox" hidden><span>'+(m.apptId?"El turno asociado vuelve a quedar sin cobrar.":"Este movimiento se borra de la caja.")+'</span><button class="btn danger block" data-act="del-move" data-id="'+m.id+'">Sí, eliminar</button></div>');
   return;
  }
+ selMv=[];mvOther=false;
  openSheet('<h2>Nuevo movimiento</h2><div class="form"><div class="seg"><label><input type="radio" name="f-type" value="in"'+(pt==="out"?"":" checked")+'><span>Ingreso</span></label><label><input type="radio" name="f-type" value="out"'+(pt==="out"?" checked":"")+'><span>Gasto</span></label></div>'+
-  '<div class="field" id="cn-sel"'+(pt==="out"?" hidden":"")+'><label for="f-svcsel">Servicio</label><select id="f-svcsel">'+S.services.map(function(x){return '<option value="'+esc(x.name)+'">'+esc(x.name)+'</option>'}).join("")+'<option value="__o">Otro…</option></select></div>'+
+  '<div class="field" id="cn-sel"'+(pt==="out"?" hidden":"")+'><span class="lab">Servicios (podés marcar varios)</span><div class="chips" id="mvchips">'+mvChipsHTML()+'</div></div>'+
   '<div class="field" id="cn-txt"'+(pt==="out"?"":" hidden")+'><label for="f-name">Concepto</label><input id="f-name" placeholder="Ej: Esmaltes, propina"></div>'+
   '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div><div class="fgrid">'+curField()+'</div>'+
   '<div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" value="'+T0()+'"></div>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-move">Guardar movimiento</button></div>');
 }
 function conSync(){
- var t=document.querySelector("input[name=f-type]:checked"),sel=$("#f-svcsel");if(!sel)return;
- var inc=!t||t.value==="in";$("#cn-sel").hidden=!inc;$("#cn-txt").hidden=inc&&sel.value!=="__o";
+ var t=document.querySelector("input[name=f-type]:checked");if(!$("#cn-sel"))return;
+ var inc=!t||t.value==="in";$("#cn-sel").hidden=!inc;$("#cn-txt").hidden=inc&&!mvOther;
 }
 function saveMove(){
- var t=document.querySelector("input[name=f-type]:checked"),isIn=!t||t.value==="in",sel=val("f-svcsel"),svc=isIn&&sel&&sel!=="__o"?sel:"";
- var name=svc||val("f-name").trim(),amt=Number(val("f-price")),date=val("f-date"),cur=isBRL()?"BRL":"ARS";
+ var t=document.querySelector("input[name=f-type]:checked"),isIn=!t||t.value==="in",names=[];
+ if(isIn){names=selMv.slice();if(mvOther){var ot=val("f-name").trim();if(!ot)return ferr("Escribí cuál es el otro concepto.");names.push(ot)}if(!names.length)return ferr("Elegí al menos un servicio.")}
+ var name=isIn?names.join(" + "):"",amt=Number(val("f-price")),date=val("f-date"),cur=isBRL()?"BRL":"ARS";
+ if(!isIn)name=val("f-name").trim();
  if(!name)return ferr("Escribí el concepto.");
  if(!(amt>0))return ferr("Escribí un monto mayor a cero.");
  if(!date)return ferr("Elegí la fecha.");
- var mv={id:uid(),date:date,type:isIn?"in":"out",concept:name,method:val("f-m"),amount:amt};if(cur==="BRL")mv.cur="BRL";if(svc)mv.svc=svc;
+ var mv={id:uid(),date:date,type:isIn?"in":"out",concept:name,method:val("f-m"),amount:amt};if(cur==="BRL")mv.cur="BRL";if(isIn){mv.svc=name;mv.svcs=names}
  S.moves.push(mv);
  closeSheet();render();toast("Movimiento guardado");
 }
@@ -1156,9 +1173,12 @@ function act(a,d,el){
   case "save-appt":saveAppt(d.id||null);break;
   case "slot":x=$("#f-time");if(x)x.value=d.t;refreshSlots();break;
   case "confirm":x=apptById(d.id);x.status="confirmed";closeSheet();render();toast("Turno confirmado");break;
+  case "svc-toggle":var ix=selSids.indexOf(d.id);if(ix>-1){if(selSids.length>1)selSids.splice(ix,1)}else selSids.push(d.id);ack=false;refreshSvc();break;
+  case "mv-toggle":var jx=selMv.indexOf(d.n);if(jx>-1)selMv.splice(jx,1);else selMv.push(d.n);var mvc=$("#mvchips");if(mvc)mvc.innerHTML=mvChipsHTML();break;
+  case "mv-other":mvOther=!mvOther;var mvc2=$("#mvchips");if(mvc2)mvc2.innerHTML=mvChipsHTML();conSync();if(mvOther&&$("#f-name"))$("#f-name").focus();break;
   case "vcur":vcur=d.c==="BRL"?"BRL":"ARS";render();break;
   case "pay":x=apptById(d.id);var am=Number(val("f-amt")),pc=(isBRL()||d.m==="Pix")?"BRL":"ARS";if(!(am>0)){toast("Escribí el monto cobrado");break}
-   x.price=am;x.cur=pc;x.status="done";removeMove(x.id);var pm2={id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:am,apptId:x.id,svc:x.service};if(pc==="BRL")pm2.cur="BRL";S.moves.push(pm2);closeSheet();render();toast("Cobro registrado en ingresos");break;
+   x.price=am;x.cur=pc;x.status="done";removeMove(x.id);var pm2={id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:am,apptId:x.id,svc:x.service,svcs:(x.names&&x.names.length?x.names:x.service.split(" + "))};if(pc==="BRL")pm2.cur="BRL";S.moves.push(pm2);closeSheet();render();toast("Cobro registrado en ingresos");break;
   case "unpay":x=apptById(d.id);x.status="confirmed";removeMove(x.id);if(x.pkg){var um=memById(x.pkg);if(um)um.usage=um.usage.filter(function(u){return u.apptId!==x.id});delete x.pkg}closeSheet();render();toast("Cobro deshecho");break;
   case "cancel-appt":x=apptById(d.id);x.status="cancelled";closeSheet();render();toast("Turno cancelado");break;
   case "reopen":x=apptById(d.id);x.status="pending";closeSheet();render();toast("Turno vuelto a agendar");break;
@@ -1175,6 +1195,8 @@ function act(a,d,el){
   case "save-move":saveMove();break;
   case "del-move":x=S.moves.filter(function(m){return m.id===d.id})[0];if(x&&x.apptId){var ap=apptById(x.apptId);if(ap&&ap.status==="done")ap.status="confirmed"}S.moves=S.moves.filter(function(m){return m.id!==d.id});closeSheet();render();toast("Movimiento eliminado");break;
   case "wa-compose":sheetWA(d.cid||"",d.aid||"",d.k);break;
+  case "wa-svc":if(wa){var wi=wa.sel.indexOf(d.n);if(wi>-1){if(wa.sel.length>1)wa.sel.splice(wi,1)}else{var all=apNames(apptById(wa.aid));wa.sel.push(d.n);wa.sel.sort(function(x,y){return all.indexOf(x)-all.indexOf(y)})}
+   var wc=$("#wasvc");if(wc)wc.innerHTML=waSvcChips();$("#wa-text").value=msgFor(wa.kind,clientById(wa.cid),apptById(wa.aid));updWA()}break;
   case "wa-kind":
    if(wa){var c=clientById(wa.cid),ap2=wa.aid?apptById(wa.aid):null;wa.kind=d.k;$("#wa-text").value=msgFor(d.k,c,ap2);
     document.querySelectorAll("[data-act=wa-kind]").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.k===d.k))});updWA()}
@@ -1208,7 +1230,7 @@ document.addEventListener("input",function(e){
   var c=S.clients.filter(function(x){return x.name.toLowerCase()===e.target.value.trim().toLowerCase()})[0];
   if(c&&c.phone)$("#f-phone").value=c.phone;
  }
- if(id==="f-date"||id==="f-svc"||id==="f-time"){ack=false;refreshSlots()}
+ if(id==="f-date"||id==="f-time"){ack=false;refreshSlots()}
  if(id==="f-pstart"&&e.target.value&&$("#f-pend"))$("#f-pend").value=monthEnd(e.target.value);
  if(id==="f-ppkg"&&$("#f-puses")&&$("#f-pprice")){var q=S.packages.filter(function(x){return x.id===e.target.value})[0];if(q){$("#f-puses").value=q.uses;$("#f-pprice").value=q.price}}
  if(id==="l-pin"&&e.target.value.length===4){
@@ -1221,7 +1243,7 @@ document.addEventListener("change",function(e){
  if(t.hasAttribute&&t.hasAttribute("data-pc"))updPromo();
  if(t.id==="f-m"&&t.value==="Pix"&&$("#f-cur")){$("#f-cur").value="Reales";curSync()}
  if(t.id==="f-cur")curSync();
- if(t.id==="f-svcsel"||t.name==="f-type")conSync();
+ if(t.name==="f-type")conSync();
  if(t.id==="p-img"){var pv=$("#p-prev");pv.innerHTML="";var f=t.files&&t.files[0];if(f){var im=document.createElement("img");im.src=URL.createObjectURL(f);im.alt="Flyer";im.style.cssText="max-width:100%;max-height:260px;border-radius:12px;margin-top:8px;display:block";pv.appendChild(im)}}
 });
 $("#importfile").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)doImport(f);e.target.value=""});
