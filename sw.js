@@ -1,5 +1,5 @@
 /* Jessy Studio: funciona sin conexión. Subí el número de versión cuando cambies la app. */
-var V = "studio-jessy-v13";
+var V = "studio-jessy-v14";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
 self.addEventListener("install", function (e) {

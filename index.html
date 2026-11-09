@@ -353,8 +353,12 @@ var ic=function(n,s){s=s||20;return '<svg width="'+s+'" height="'+s+'" viewBox="
 var STORE="studioJessy.v3", S, tab="hoy", selDate=T0(), ack=false, per=30, wa=null, deferredInstall=null;
 var METHODS=["Efectivo","Transferencia","Tarjeta","Pix"];
 var brl=function(n){return "R$ "+Number(n).toLocaleString("es-AR",{minimumFractionDigits:0,maximumFractionDigits:2})};
-var mlabel=function(m){return m.method+(m.brl?" · "+brl(m.brl):"")};
+var mlabel=function(m){return m.method};
 var isBRL=function(){return val("f-cur")==="Reales"};
+var vcur="ARS";
+var mc=function(m){return m.cur==="BRL"?"BRL":"ARS"};
+var fm=function(n,c){return c==="BRL"?brl(n):money(n)};
+var fmv=function(m){return fm(m.amount,mc(m))};
 var STATUS={pending:"Pendiente",confirmed:"Confirmado",done:"Cobrado",cancelled:"Cancelado"};
 var TPL_DEFAULT={
  recordatorio:"Hola {nombre} 💕 Te recordamos tu turno de {servicio} {dia} a las {hora} en {estudio}. ¿Confirmás que venís? ✨",
@@ -377,7 +381,7 @@ function baseServices(){return [
  {id:"s4",name:"Pedicure",min:60,price:0},
  {id:"s5",name:"Manicure y pedicure",min:120,price:0}]}
 function basePackages(){return [{id:"p1",name:"Paquete mensual de uñas",uses:4,price:30000}]}
-function defaults(){return {studio:"Jessy Studio",open:"09:00",close:"19:00",pin:"",rate:"",tpl:{}}}
+function defaults(){return {studio:"Jessy Studio",open:"09:00",close:"19:00",pin:"",tpl:{}}}
 function empty(){return {v:3,example:false,settings:defaults(),services:baseServices(),packages:basePackages(),memberships:[],clients:[],appts:[],moves:[]}}
 
 function seed(){
@@ -415,7 +419,7 @@ function seed(){
 }
 function normalize(o){
  if(!o||!o.appts||!o.clients||!o.services||!o.moves)return null;
- o.moves.forEach(function(m){if(m.method==="Pix (reales)")m.method="Pix"});
+ o.moves.forEach(function(m){if(m.method==="Pix (reales)")m.method="Pix";if(m.brl>0){m.amount=m.brl;m.cur="BRL"}delete m.brl;delete m.rate});
  o.packages=o.packages||basePackages();o.memberships=o.memberships||[];
  o.settings=Object.assign(defaults(),o.settings||{});o.settings.tpl=o.settings.tpl||{};o.v=3;return o;
 }
@@ -513,7 +517,8 @@ function vHoy(){
  var T=T0(),list=apptsOn(T).filter(live);
  var pend=list.filter(function(a){return a.status!=="done"}).length;
  var cobros=S.moves.filter(function(m){return m.type==="in"&&m.date===T});
- var cobrado=cobros.reduce(function(s,m){return s+m.amount},0);
+ var cobrado=cobros.filter(function(m){return mc(m)==='ARS'}).reduce(function(s,m){return s+m.amount},0),cobradoR=cobros.filter(function(m){return mc(m)==='BRL'}).reduce(function(s,m){return s+m.amount},0);
+ var cobTxt=(cobrado>0||!cobradoR?money(cobrado):'')+(cobradoR?(cobrado>0?' + ':'')+brl(cobradoR):'');
  var nx=nextAppt(),h="";
  if(S.example)h+='<div class="note"><span>Estás viendo datos de ejemplo.</span><button class="btn" data-act="reset-ask">Empezar de cero</button></div>';
  if(!S.example&&(S.clients.length||S.appts.length)){var ba=backupAge();if(ba===null||ba>=7)h+='<div class="note info"><span>'+(ba===null?"Guardá una copia de tus datos para no perder nada si cambiás de celular.":"Hace "+ba+" días que no guardás una copia de tus datos.")+'</span><button class="btn" data-act="export">Guardar copia</button></div>';}
@@ -529,7 +534,7 @@ function vHoy(){
  }
  h+=quickHTML();
  h+='<button class="btn wa block promo-cta" data-act="promo-open">'+ic("chat",18)+'Enviar promoción o flyer a varios clientes</button>';
- h+='<div class="mini"><div><small>Turnos de hoy</small><b>'+list.length+'</b><small>'+(pend?pend+" por atender":(list.length?"todo atendido":"sin turnos"))+'</small></div><div><small>Cobrado hoy</small><b>'+money(cobrado)+'</b><small>'+cobros.length+(cobros.length===1?' cobro':' cobros')+'</small></div></div>';
+ h+='<div class="mini"><div><small>Turnos de hoy</small><b>'+list.length+'</b><small>'+(pend?pend+" por atender":(list.length?"todo atendido":"sin turnos"))+'</small></div><div><small>Cobrado hoy</small><b>'+cobTxt+'</b><small>'+cobros.length+(cobros.length===1?' cobro':' cobros')+'</small></div></div>';
  h+='<section class="sec"><div class="sec-h"><h2>Hoy</h2><button class="linkbtn" data-act="go-agenda">Ver agenda</button></div>'+
   (list.length?'<div class="list">'+list.map(rowHTML).join("")+'</div>':'<div class="card empty">No hay turnos para hoy.</div>')+'</section>';
  var tm=apptsOn(addDays(T,1)).filter(function(a){return a.status==="pending"||a.status==="confirmed"});
@@ -642,7 +647,7 @@ function pkgSection(){
  }).join("")+'</div><button class="btn primary block" data-act="sell-pkg" data-cid="">Vender un paquete</button>':'<div class="card empty">Todavía no armaste paquetes.<button class="btn primary" data-act="new-pkg">'+ic("plus",18)+'Nuevo paquete</button></div>')+'</section>';
 }
 function kfmt(v){if(!v)return "";if(v<1000)return String(v);return (Math.round(v/100)/10).toLocaleString("es-AR")+"k"}
-function sumR(type,from,to){return S.moves.filter(function(m){return m.type===type&&m.date>=from&&m.date<=to}).reduce(function(s,m){return s+m.amount},0)}
+function sumR(type,from,to,c){c=c||vcur;return S.moves.filter(function(m){return m.type===type&&m.date>=from&&m.date<=to&&mc(m)===c}).reduce(function(s,m){return s+m.amount},0)}
 function buckets(p){
  var T=T0(),n=p===7?7:6,size=p/n,out=[];
  for(var i=n-1;i>=0;i--){
@@ -666,31 +671,29 @@ function brkRows(g,total,withDot){
  if(!g.length)return '<div class="card empty">Todavía no hay ingresos en este período.</div>';
  return '<div class="list">'+g.map(function(x){
   var pc=total?Math.round(x.v/total*100):0;
-  return '<div class="brk '+(withDot?cat(x.k):"")+'"><div class="top"><span>'+(withDot?'<i class="dot '+cat(x.k)+'"></i>':'')+esc(x.k)+'</span><b class="amt">'+money(x.v)+'</b></div><div class="meter"><i style="width:'+pc+'%"></i></div><small class="sub">'+pc+'% del total</small></div>';
+  return '<div class="brk '+(withDot?cat(x.k):"")+'"><div class="top"><span>'+(withDot?'<i class="dot '+cat(x.k)+'"></i>':'')+esc(x.k)+'</span><b class="amt">'+fm(x.v,vcur)+'</b></div><div class="meter"><i style="width:'+pc+'%"></i></div><small class="sub">'+pc+'% del total</small></div>';
  }).join("")+'</div>';
 }
-function brlSection(inc){
- var g={},tot=0,pes=0;inc.forEach(function(m){if(m.brl>0){g[m.method]=(g[m.method]||0)+m.brl;tot+=m.brl;pes+=m.amount}});
- var ks=Object.keys(g);if(!ks.length)return "";
- return '<section class="sec"><div class="sec-h"><h2>Cobrado en reales</h2></div><div class="card"><div class="brk"><div class="top"><span><b>Total en reales</b></span><b class="amt">'+brl(tot)+'</b></div><small class="sub">Equivale a '+money(pes)+' en pesos, ya sumado arriba</small></div>'+ks.sort(function(a,b){return g[b]-g[a]}).map(function(k){return '<div class="brk"><div class="top"><span>'+esc(k)+'</span><b class="amt">'+brl(g[k])+'</b></div></div>'}).join("")+'</div></section>';
+function curSeg(T,from){
+ var oc=vcur==="ARS"?"BRL":"ARS",o=sumR("in",from,T,oc),ob=o>0?'<p class="sub" style="margin:2px 2px 0">También cobraste '+fm(o,oc)+' en '+(oc==="BRL"?"reales":"pesos")+' en este período.</p>':'';
+ return '<div class="segb" role="group" aria-label="Moneda"><button data-act="vcur" data-c="ARS" aria-pressed="'+(vcur==="ARS")+'">Pesos ($)</button><button data-act="vcur" data-c="BRL" aria-pressed="'+(vcur==="BRL")+'">Reales (R$)</button></div>'+ob;
 }
 function vCaja(){
  var T=T0(),from=addDays(T,-(per-1)),pt=addDays(from,-1),pf=addDays(from,-per);
- var inc=S.moves.filter(function(m){return m.type==="in"&&m.date>=from&&m.date<=T});
+ var inc=S.moves.filter(function(m){return m.type==="in"&&m.date>=from&&m.date<=T&&mc(m)===vcur});
  var ti=inc.reduce(function(s,m){return s+m.amount},0),to=sumR("out",from,T),prev=sumR("in",pf,pt);
  var chg=prev>0?Math.round((ti-prev)/prev*100):null,avg=inc.length?ti/inc.length:0;
  var title={7:"Últimos 7 días",30:"Últimos 30 días",90:"Últimos 3 meses"}[per];
  var seg='<div class="segb" role="group" aria-label="Período">'+[7,30,90].map(function(p){return '<button data-act="per" data-p="'+p+'" aria-pressed="'+(p===per)+'">'+({7:"7 días",30:"30 días",90:"3 meses"})[p]+'</button>'}).join("")+'</div>';
  var recent=S.moves.filter(function(m){return m.date>=from&&m.date<=T}).sort(function(a,b){return b.date.localeCompare(a.date)}).slice(0,40);
- return '<div class="stack"><div class="actions2"><button class="btn primary" data-act="new-move">'+ic("plus",18)+'Registrar ingreso</button><button class="btn soft" data-act="new-expense">'+ic("wallet",18)+'Registrar gasto</button></div>'+seg+
-  '<section class="income"><div><p class="eyebrow">Ingresos · '+title+'</p><div class="num">'+money(ti)+'</div></div><div class="meta">'+(chg===null?'':'<span class="chg'+(chg<0?" neg":"")+'">'+(chg>=0?"+":"")+chg+'% vs. período anterior</span>')+'<span>'+inc.length+(inc.length===1?" cobro":" cobros")+'</span></div>'+
-  '<div class="two"><div><small>Gastos</small><b>'+money(to)+'</b></div><div><small>Ganancia neta</small><b>'+money(ti-to)+'</b></div><div><small>Ticket promedio</small><b>'+money(avg)+'</b></div></div></section>'+
-  brlSection(inc)+
+ return '<div class="stack"><div class="actions2"><button class="btn primary" data-act="new-move">'+ic("plus",18)+'Registrar ingreso</button><button class="btn soft" data-act="new-expense">'+ic("wallet",18)+'Registrar gasto</button></div>'+seg+curSeg(T,from)+
+  '<section class="income"><div><p class="eyebrow">Ingresos · '+title+'</p><div class="num">'+fm(ti,vcur)+'</div></div><div class="meta">'+(chg===null?'':'<span class="chg'+(chg<0?" neg":"")+'">'+(chg>=0?"+":"")+chg+'% vs. período anterior</span>')+'<span>'+inc.length+(inc.length===1?" cobro":" cobros")+'</span></div>'+
+  '<div class="two"><div><small>Gastos</small><b>'+fm(to,vcur)+'</b></div><div><small>Ganancia neta</small><b>'+fm(ti-to,vcur)+'</b></div><div><small>Ticket promedio</small><b>'+fm(avg,vcur)+'</b></div></div></section>'+
   '<section class="sec"><div class="sec-h"><h2>Evolución</h2></div><div class="card" style="padding:14px 12px 6px">'+chartSVG(buckets(per))+'</div></section>'+
   '<section class="sec"><div class="sec-h"><h2>Qué servicio deja más</h2></div>'+brkRows(groupSum(inc,function(m){return m.svc||"Otros"}),ti,true)+'</section>'+
   '<section class="sec"><div class="sec-h"><h2>Cómo te pagan</h2></div>'+brkRows(groupSum(inc,function(m){return m.method}),ti,false)+'</section>'+
   '<section class="sec"><div class="sec-h"><h2>Movimientos</h2></div>'+(recent.length?'<div class="list">'+recent.map(function(m){
-   return '<button class="row" data-act="move" data-id="'+m.id+'"><span class="who"><b>'+esc(m.concept)+'</b><small>'+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"short"}))+' · '+esc(mlabel(m))+'</small></span><span class="amt '+m.type+'">'+(m.type==="in"?"+":"−")+money(m.amount)+'</span></button>';
+   return '<button class="row" data-act="move" data-id="'+m.id+'"><span class="who"><b>'+esc(m.concept)+'</b><small>'+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"short"}))+' · '+esc(mlabel(m))+'</small></span><span class="amt '+m.type+'">'+(m.type==="in"?"+":"−")+fmv(m)+'</span></button>';
   }).join("")+'</div>':'<div class="card empty">No hay movimientos en este período.</div>')+'</section></div>';
 }
 function incomeCard(){
@@ -764,17 +767,15 @@ function sheetWAPick(){
  openSheet('<div><p class="eyebrow">WhatsApp</p><h2>¿A quién le escribís?</h2></div><button class="btn soft block" data-act="promo-open">Enviar promoción o flyer a varios clientes</button><div class="searchwrap">'+ic("search",20)+'<input id="wq" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="wapicklist">'+waPickList("")+'</div>');
 }
 function curField(){return '<div class="field"><label for="f-cur">Moneda</label><select id="f-cur"><option value="Pesos">Pesos ($)</option><option value="Reales">Reales (R$)</option></select></div>'}
-function pixBox(hid){
- return '<div id="pixbox" class="pixbox"'+(hid?' hidden':'')+'><div class="fgrid"><div class="field"><label for="f-brl">Monto en reales (R$)</label><input id="f-brl" type="number" inputmode="decimal" min="0" step="0.01"></div><div class="field"><label for="f-rate">1 real = $ pesos</label><input id="f-rate" type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(S.settings.rate||"")+'"></div></div><p id="pixcalc" class="hint">Escribí los reales y la cotización del día: la app calcula los pesos.</p></div>';
+var AMT_LBL={"f-price":"Monto","f-amt":"Monto cobrado","f-pprice":"Monto pagado"};
+function curSync(){
+ var r=isBRL();
+ Object.keys(AMT_LBL).forEach(function(id){var l=document.querySelector('label[for="'+id+'"]');if(l)l.textContent=AMT_LBL[id]+(r?" (R$)":" ($)")});
+ var pp=$("#f-pprice"),pk=$("#f-ppkg");if(pp&&pk){var q=S.packages.filter(function(x){return x.id===pk.value})[0];pp.value=r?"":(q?q.price:"")}
+ var fa=$("#f-amt");if(fa&&r)fa.value=""
 }
-function pixVals(){var b=Number(val("f-brl")),r=Number(val("f-rate"));return {b:b,r:r,ok:b>0&&r>0,pesos:Math.round(b*r)}}
-function updPix(){
- var v=pixVals(),c=$("#pixcalc");if(c)c.textContent=v.ok?"Equivale a $"+v.pesos.toLocaleString("es-AR")+" (se anota en Ingresos en pesos y en reales)":"Escribí los reales y la cotización del día: la app calcula los pesos.";
- if(isBRL()&&v.ok){["f-price","f-pprice"].forEach(function(id){var e=$("#"+id);if(e)e.value=v.pesos})}
-}
-function curSync(){var pb=$("#pixbox");if(!pb)return;var r=isBRL();pb.hidden=!r;["f-price","f-pprice"].forEach(function(id){var e=$("#"+id);if(e)e.readOnly=r});if(r)updPix()}
 function lastPrice(a){
- var l=S.moves.filter(function(m){return m.type==="in"&&m.svc===a.service&&m.amount>0}).sort(function(x,y){return y.date.localeCompare(x.date)})[0];
+ var l=S.moves.filter(function(m){return m.type==="in"&&m.svc===a.service&&m.amount>0&&mc(m)==="ARS"}).sort(function(x,y){return y.date.localeCompare(x.date)})[0];
  return l?l.amount:(a.price>0?a.price:"");
 }
 function sheetAppt(id){
@@ -784,9 +785,9 @@ function sheetAppt(id){
   var pm=memOpen(a.cid);
   if(pm)b+='<div class="card pkgcard"><b>Tiene paquete · quedan '+memLeft(pm)+' de '+pm.total+'</b><p class="sub">Vigente hasta el '+fmtD(pm.end)+'. Descontalo del paquete en vez de cobrar.</p><button class="btn ok block" data-act="use-pkg" data-id="'+a.id+'" data-n="1">'+ic("check",18)+'Descontar 1 uso</button>'+(memLeft(pm)>=2?'<button class="btn soft block" data-act="use-pkg" data-id="'+a.id+'" data-n="2">Descontar 2 usos (manos y pies)</button>':'')+'</div>';
   b+='<button class="btn primary block" data-act="reveal" data-target="payopts">Cobrar</button>'+
-   '<div id="payopts" hidden><div class="form"><div class="field"><label for="f-amt">Monto cobrado ($)</label><input id="f-amt" type="number" inputmode="numeric" min="0" value="'+lastPrice(a)+'"></div><div class="payopts">'+METHODS.map(function(m){return '<button class="btn soft" data-act="pay" data-id="'+a.id+'" data-m="'+m+'">'+m+'</button>'}).join("")+'</div><p class="eyebrow" style="margin-top:14px">Si te pagan en reales (R$)</p>'+pixBox(false)+'<div class="payopts">'+METHODS.map(function(m){return '<button class="btn soft" data-act="pay-brl" data-id="'+a.id+'" data-m="'+m+'">'+m+' en R$</button>'}).join("")+'</div></div></div>';
+   '<div id="payopts" hidden><div class="form"><div class="fgrid">'+curField()+'<div class="field"><label for="f-amt">Monto cobrado ($)</label><input id="f-amt" type="number" inputmode="decimal" min="0" value="'+lastPrice(a)+'"></div></div><div class="payopts">'+METHODS.map(function(m){return '<button class="btn soft" data-act="pay" data-id="'+a.id+'" data-m="'+m+'">'+m+'</button>'}).join("")+'</div></div></div>';
  }
- if(st==="done")b+='<p class="sub">'+(a.pkg?"Descontado del paquete":"Cobrado "+money(a.price)+(mv?" · "+esc(mlabel(mv)):""))+'</p><button class="btn wa block" data-act="wa-compose" data-aid="'+a.id+'" data-k="gracias">'+ic("chat",18)+'Agradecer por WhatsApp</button><button class="btn soft block" data-act="unpay" data-id="'+a.id+'">Deshacer cobro</button>';
+ if(st==="done")b+='<p class="sub">'+(a.pkg?"Descontado del paquete":"Cobrado "+(mv?fmv(mv):money(a.price))+(mv?" · "+esc(mlabel(mv)):""))+'</p><button class="btn wa block" data-act="wa-compose" data-aid="'+a.id+'" data-k="gracias">'+ic("chat",18)+'Agradecer por WhatsApp</button><button class="btn soft block" data-act="unpay" data-id="'+a.id+'">Deshacer cobro</button>';
  if(st!=="cancelled")b+='<div class="actions2"><button class="btn wa" data-act="wa-compose" data-aid="'+a.id+'" data-k="recordatorio">'+ic("chat",18)+'Enviar recordatorio</button><button class="btn soft" data-act="edit-appt" data-id="'+a.id+'">Editar / mover</button></div>';
  if(st==="cancelled")b+='<button class="btn soft block" data-act="reopen" data-id="'+a.id+'">Volver a agendar</button>';
  if(st==="pending"||st==="confirmed")b+='<button class="btn danger block" data-act="reveal" data-target="cancelbox">Cancelar turno</button><div id="cancelbox" class="confirmbox" hidden><span>¿Cancelar el turno de '+esc(nm(a))+'?</span><button class="btn danger block" data-act="cancel-appt" data-id="'+a.id+'">Sí, cancelar</button></div>';
@@ -886,7 +887,7 @@ function sheetSell(cid){
   '<div class="field"><label for="f-ppkg">Paquete</label><select id="f-ppkg">'+opts(S.packages,p.id,function(x){return x.name+" · "+x.uses+" usos · "+money(x.price)})+'</select></div>'+
   '<div class="fgrid"><div class="field"><label for="f-pstart">Desde</label><input id="f-pstart" type="date" value="'+T+'"></div><div class="field"><label for="f-pend">Vence</label><input id="f-pend" type="date" value="'+monthEnd(T)+'"></div></div>'+
   '<div class="fgrid"><div class="field"><label for="f-puses">Usos incluidos</label><input id="f-puses" type="number" inputmode="numeric" min="1" value="'+p.uses+'"></div><div class="field"><label for="f-pprice">Monto pagado ($)</label><input id="f-pprice" type="number" inputmode="numeric" min="0" value="'+p.price+'"></div></div>'+
-  '<div class="fgrid">'+curField()+'<div class="field"><label for="f-m">Medio de pago</label><select id="f-m">'+opts(METHODS,"Transferencia")+'</select></div></div>'+pixBox(true)+
+  '<div class="fgrid">'+curField()+'<div class="field"><label for="f-m">Medio de pago</label><select id="f-m">'+opts(METHODS,"Transferencia")+'</select></div></div>'+
   '<p class="hint">El pago se anota solo en Ingresos. Si ya lo habías cobrado antes, poné $0.</p>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-sell">Guardar paquete</button></div>');
 }
@@ -897,13 +898,13 @@ function saveSell(){
  if(!start||!end)return ferr("Elegí las fechas.");
  if(end<start)return ferr("El vencimiento no puede ser antes del inicio.");
  if(!(uses>=1))return ferr("Escribí cuántos usos incluye.");
- var mth=val("f-m"),pxv=null;if(isBRL()){pxv=pixVals();if(pxv.ok){amt=pxv.pesos;S.settings.rate=pxv.r}else{pxv=null;if(amt>0)return ferr("Escribí los reales y la cotización.")}}
+ var mth=val("f-m");var scur=isBRL()?"BRL":"ARS";
  if(!(amt>=0))return ferr("El monto no puede ser negativo.");
  var c=S.clients.filter(function(x){return x.name.toLowerCase()===name.toLowerCase()})[0];
  if(!c){c={id:uid(),name:name,phone:"",service:"",birthday:"",notes:""};S.clients.push(c)}
  var m={id:uid(),cid:c.id,pkgId:p.id,name:p.name,start:start,end:end,total:uses,price:amt,usage:[]};
  S.memberships.push(m);
- if(amt>0)S.moves.push({id:uid(),date:T0(),type:"in",concept:p.name+" · "+c.name,method:mth,amount:amt,svc:"Paquetes",memId:m.id,brl:pxv?pxv.b:undefined,rate:pxv?pxv.r:undefined});
+ if(amt>0)S.moves.push({id:uid(),date:T0(),type:"in",concept:p.name+" · "+c.name,method:mth,amount:amt,svc:"Paquetes",memId:m.id,cur:scur==="BRL"?"BRL":undefined});
  closeSheet();render();toast(c.phone?"Paquete guardado":"Paquete guardado. Falta cargar su WhatsApp");
 }
 function sheetPkg(id){
@@ -940,22 +941,28 @@ function saveSvc(id){
 function sheetMove(id,pt){
  var m=id?S.moves.filter(function(x){return x.id===id})[0]:null;
  if(m){
-  openSheet('<div class="sh-head"><div><p class="eyebrow">'+(m.type==="in"?"Ingreso":"Gasto")+' · '+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"long"}))+'</p><h2>'+esc(m.concept)+'</h2><p class="sub">'+esc(mlabel(m))+(m.brl&&m.rate?' · 1 R$ = $'+m.rate:'')+'</p></div><span class="amt '+m.type+'" style="font-size:20px">'+(m.type==="in"?"+":"−")+money(m.amount)+'</span></div><button class="btn danger block" data-act="reveal" data-target="delbox">Eliminar movimiento</button><div id="delbox" class="confirmbox" hidden><span>'+(m.apptId?"El turno asociado vuelve a quedar sin cobrar.":"Este movimiento se borra de la caja.")+'</span><button class="btn danger block" data-act="del-move" data-id="'+m.id+'">Sí, eliminar</button></div>');
+  openSheet('<div class="sh-head"><div><p class="eyebrow">'+(m.type==="in"?"Ingreso":"Gasto")+' · '+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"long"}))+'</p><h2>'+esc(m.concept)+'</h2><p class="sub">'+esc(mlabel(m))+'</p></div><span class="amt '+m.type+'" style="font-size:20px">'+(m.type==="in"?"+":"−")+fmv(m)+'</span></div><button class="btn danger block" data-act="reveal" data-target="delbox">Eliminar movimiento</button><div id="delbox" class="confirmbox" hidden><span>'+(m.apptId?"El turno asociado vuelve a quedar sin cobrar.":"Este movimiento se borra de la caja.")+'</span><button class="btn danger block" data-act="del-move" data-id="'+m.id+'">Sí, eliminar</button></div>');
   return;
  }
  openSheet('<h2>Nuevo movimiento</h2><div class="form"><div class="seg"><label><input type="radio" name="f-type" value="in"'+(pt==="out"?"":" checked")+'><span>Ingreso</span></label><label><input type="radio" name="f-type" value="out"'+(pt==="out"?" checked":"")+'><span>Gasto</span></label></div>'+
-  '<div class="field"><label for="f-name">Concepto</label><input id="f-name" placeholder="Ej: Esmaltes, propina" autofocus></div>'+
-  '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div><div class="fgrid">'+curField()+'</div>'+pixBox(true)+
+  '<div class="field" id="cn-sel"'+(pt==="out"?" hidden":"")+'><label for="f-svcsel">Servicio</label><select id="f-svcsel">'+S.services.map(function(x){return '<option value="'+esc(x.name)+'">'+esc(x.name)+'</option>'}).join("")+'<option value="__o">Otro…</option></select></div>'+
+  '<div class="field" id="cn-txt"'+(pt==="out"?"":" hidden")+'><label for="f-name">Concepto</label><input id="f-name" placeholder="Ej: Esmaltes, propina"></div>'+
+  '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div><div class="fgrid">'+curField()+'</div>'+
   '<div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" value="'+T0()+'"></div>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-move">Guardar movimiento</button></div>');
 }
+function conSync(){
+ var t=document.querySelector("input[name=f-type]:checked"),sel=$("#f-svcsel");if(!sel)return;
+ var inc=!t||t.value==="in";$("#cn-sel").hidden=!inc;$("#cn-txt").hidden=inc&&sel.value!=="__o";
+}
 function saveMove(){
- var name=val("f-name").trim(),amt=Number(val("f-price")),date=val("f-date"),t=document.querySelector("input[name=f-type]:checked");
+ var t=document.querySelector("input[name=f-type]:checked"),isIn=!t||t.value==="in",sel=val("f-svcsel"),svc=isIn&&sel&&sel!=="__o"?sel:"";
+ var name=svc||val("f-name").trim(),amt=Number(val("f-price")),date=val("f-date"),cur=isBRL()?"BRL":"ARS";
  if(!name)return ferr("Escribí el concepto.");
- var mth=val("f-m"),pxv=null;if(isBRL()){pxv=pixVals();if(!pxv.ok)return ferr("Escribí los reales y la cotización.");amt=pxv.pesos;S.settings.rate=pxv.r}
  if(!(amt>0))return ferr("Escribí un monto mayor a cero.");
  if(!date)return ferr("Elegí la fecha.");
- S.moves.push({id:uid(),date:date,type:t?t.value:"in",concept:name,method:mth,amount:amt,brl:pxv?pxv.b:undefined,rate:pxv?pxv.r:undefined});
+ var mv={id:uid(),date:date,type:isIn?"in":"out",concept:name,method:val("f-m"),amount:amt};if(cur==="BRL")mv.cur="BRL";if(svc)mv.svc=svc;
+ S.moves.push(mv);
  closeSheet();render();toast("Movimiento guardado");
 }
 function sheetSettings(){
@@ -969,7 +976,6 @@ function sheetSettings(){
   '<div class="card setcard"><b>Usarla como app</b>'+inst+'</div>'+
   '<div class="card setcard"><b>El estudio</b><div class="form"><div class="field"><label for="s-studio">Nombre (aparece en los mensajes)</label><input id="s-studio" value="'+esc(S.settings.studio)+'"></div><div class="fgrid"><div class="field"><label for="s-open">Abre</label><input id="s-open" type="time" value="'+esc(S.settings.open)+'"></div><div class="field"><label for="s-close">Cierra</label><input id="s-close" type="time" value="'+esc(S.settings.close)+'"></div></div></div></div>'+
   '<div class="card setcard"><b>Mensajes de WhatsApp</b><p class="hint">Podés cambiar el texto. Se completan solos: {nombre} {servicio} {dia} {hora} {estudio}.</p><div class="form">'+tpl+'</div><button class="btn soft block" data-act="tpl-reset">Volver a los textos originales</button></div>'+
-  '<div class="card setcard"><b>Cobros en reales (Pix)</b><div class="field"><label for="s-rate">Cotización habitual: 1 real = $ pesos</label><input id="s-rate" type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(S.settings.rate||"")+'"></div><p class="hint">Se usa como sugerencia al cobrar en Pix. Podés cambiarla en cada cobro.</p></div>'+
   '<div class="card setcard"><b>Clave de acceso</b><p class="sub">Tu agenda y tus clientes están solo en este celular: nadie más los ve, ni siquiera con el link de la app. Si querés, agregá una clave para que la pida al abrirla.</p><div class="field"><label for="s-pin">Clave de 4 números (opcional)</label><input id="s-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" value="'+esc(S.settings.pin||"")+'"></div><p class="hint">Antes de poner una, guardá una copia de seguridad: si te olvidás la clave, la copia es la forma de volver a entrar.</p></div>'+
   '<p id="ferr" class="ferr" role="alert"></p>'+
   '<button class="btn primary block" data-act="save-settings">Guardar ajustes</button>'+
@@ -980,7 +986,7 @@ function sheetSettings(){
 }
 function saveSettings(){
  var pin=val("s-pin").trim();if(pin&&!/^\d{4}$/.test(pin))return ferr("La clave son 4 números.");
- var st=S.settings;st.pin=pin;st.rate=Number(val("s-rate"))>0?Number(val("s-rate")):"";st.studio=val("s-studio").trim()||"Jessy Studio";st.open=val("s-open")||"09:00";st.close=val("s-close")||"19:00";
+ var st=S.settings;st.pin=pin;st.studio=val("s-studio").trim()||"Jessy Studio";st.open=val("s-open")||"09:00";st.close=val("s-close")||"19:00";
  if(mins(st.close)<=mins(st.open)){st.open="09:00";st.close="19:00"}
  st.tpl={};TPL_EDIT.forEach(function(k){var v=val("t-"+k).trim();if(v&&v!==TPL_DEFAULT[k])st.tpl[k]=v});
  closeSheet();render();toast("Ajustes guardados");
@@ -1150,10 +1156,9 @@ function act(a,d,el){
   case "save-appt":saveAppt(d.id||null);break;
   case "slot":x=$("#f-time");if(x)x.value=d.t;refreshSlots();break;
   case "confirm":x=apptById(d.id);x.status="confirmed";closeSheet();render();toast("Turno confirmado");break;
-  case "pay":x=apptById(d.id);var am=Number(val("f-amt"));if(!(am>0)){toast("Escribí el monto cobrado");break}
-   x.price=am;x.status="done";removeMove(x.id);S.moves.push({id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:am,apptId:x.id,svc:x.service});closeSheet();render();toast("Cobro registrado en ingresos");break;
-  case "pay-brl":x=apptById(d.id);var pv=pixVals();if(!pv.ok){toast("Escribí los reales y la cotización");break}
-   S.settings.rate=pv.r;x.price=pv.pesos;x.status="done";removeMove(x.id);S.moves.push({id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:pv.pesos,brl:pv.b,rate:pv.r,apptId:x.id,svc:x.service});closeSheet();render();toast("Cobro en reales registrado");break;
+  case "vcur":vcur=d.c==="BRL"?"BRL":"ARS";render();break;
+  case "pay":x=apptById(d.id);var am=Number(val("f-amt")),pc=(isBRL()||d.m==="Pix")?"BRL":"ARS";if(!(am>0)){toast("Escribí el monto cobrado");break}
+   x.price=am;x.cur=pc;x.status="done";removeMove(x.id);var pm2={id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:am,apptId:x.id,svc:x.service};if(pc==="BRL")pm2.cur="BRL";S.moves.push(pm2);closeSheet();render();toast("Cobro registrado en ingresos");break;
   case "unpay":x=apptById(d.id);x.status="confirmed";removeMove(x.id);if(x.pkg){var um=memById(x.pkg);if(um)um.usage=um.usage.filter(function(u){return u.apptId!==x.id});delete x.pkg}closeSheet();render();toast("Cobro deshecho");break;
   case "cancel-appt":x=apptById(d.id);x.status="cancelled";closeSheet();render();toast("Turno cancelado");break;
   case "reopen":x=apptById(d.id);x.status="pending";closeSheet();render();toast("Turno vuelto a agendar");break;
@@ -1199,7 +1204,6 @@ document.addEventListener("input",function(e){
  if(id==="q")$("#clientlist").innerHTML=clientList(e.target.value);
  if(id==="wq")$("#wapicklist").innerHTML=waPickList(e.target.value);
  if(id==="wa-text")updWA();
- if(id==="f-brl"||id==="f-rate")updPix();
  if(id==="f-name"&&$("#f-phone")&&!$("#f-phone").value){
   var c=S.clients.filter(function(x){return x.name.toLowerCase()===e.target.value.trim().toLowerCase()})[0];
   if(c&&c.phone)$("#f-phone").value=c.phone;
@@ -1217,6 +1221,7 @@ document.addEventListener("change",function(e){
  if(t.hasAttribute&&t.hasAttribute("data-pc"))updPromo();
  if(t.id==="f-m"&&t.value==="Pix"&&$("#f-cur")){$("#f-cur").value="Reales";curSync()}
  if(t.id==="f-cur")curSync();
+ if(t.id==="f-svcsel"||t.name==="f-type")conSync();
  if(t.id==="p-img"){var pv=$("#p-prev");pv.innerHTML="";var f=t.files&&t.files[0];if(f){var im=document.createElement("img");im.src=URL.createObjectURL(f);im.alt="Flyer";im.style.cssText="max-width:100%;max-height:260px;border-radius:12px;margin-top:8px;display:block";pv.appendChild(im)}}
 });
 $("#importfile").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)doImport(f);e.target.value=""});
