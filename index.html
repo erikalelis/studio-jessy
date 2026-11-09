@@ -351,7 +351,10 @@ var ic=function(n,s){s=s||20;return '<svg width="'+s+'" height="'+s+'" viewBox="
 
 /* ---------- Datos ---------- */
 var STORE="studioJessy.v3", S, tab="hoy", selDate=T0(), ack=false, per=30, wa=null, deferredInstall=null;
-var METHODS=["Efectivo","Transferencia","Tarjeta"];
+var PIX="Pix (reales)";
+var METHODS=["Efectivo","Transferencia","Tarjeta",PIX];
+var brl=function(n){return "R$ "+Number(n).toLocaleString("es-AR",{minimumFractionDigits:0,maximumFractionDigits:2})};
+var mlabel=function(m){return m.method+(m.brl?" · "+brl(m.brl):"")};
 var STATUS={pending:"Pendiente",confirmed:"Confirmado",done:"Cobrado",cancelled:"Cancelado"};
 var TPL_DEFAULT={
  recordatorio:"Hola {nombre} 💕 Te recordamos tu turno de {servicio} {dia} a las {hora} en {estudio}. ¿Confirmás que venís? ✨",
@@ -374,7 +377,7 @@ function baseServices(){return [
  {id:"s4",name:"Pedicure",min:60,price:0},
  {id:"s5",name:"Manicure y pedicure",min:120,price:0}]}
 function basePackages(){return [{id:"p1",name:"Paquete mensual de uñas",uses:4,price:30000}]}
-function defaults(){return {studio:"Jessy Studio",open:"09:00",close:"19:00",pin:"",tpl:{}}}
+function defaults(){return {studio:"Jessy Studio",open:"09:00",close:"19:00",pin:"",rate:"",tpl:{}}}
 function empty(){return {v:3,example:false,settings:defaults(),services:baseServices(),packages:basePackages(),memberships:[],clients:[],appts:[],moves:[]}}
 
 function seed(){
@@ -680,7 +683,7 @@ function vCaja(){
   '<section class="sec"><div class="sec-h"><h2>Qué servicio deja más</h2></div>'+brkRows(groupSum(inc,function(m){return m.svc||"Otros"}),ti,true)+'</section>'+
   '<section class="sec"><div class="sec-h"><h2>Cómo te pagan</h2></div>'+brkRows(groupSum(inc,function(m){return m.method}),ti,false)+'</section>'+
   '<section class="sec"><div class="sec-h"><h2>Movimientos</h2></div>'+(recent.length?'<div class="list">'+recent.map(function(m){
-   return '<button class="row" data-act="move" data-id="'+m.id+'"><span class="who"><b>'+esc(m.concept)+'</b><small>'+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"short"}))+' · '+esc(m.method)+'</small></span><span class="amt '+m.type+'">'+(m.type==="in"?"+":"−")+money(m.amount)+'</span></button>';
+   return '<button class="row" data-act="move" data-id="'+m.id+'"><span class="who"><b>'+esc(m.concept)+'</b><small>'+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"short"}))+' · '+esc(mlabel(m))+'</small></span><span class="amt '+m.type+'">'+(m.type==="in"?"+":"−")+money(m.amount)+'</span></button>';
   }).join("")+'</div>':'<div class="card empty">No hay movimientos en este período.</div>')+'</section></div>';
 }
 function incomeCard(){
@@ -753,6 +756,14 @@ function waPickList(q){
 function sheetWAPick(){
  openSheet('<div><p class="eyebrow">WhatsApp</p><h2>¿A quién le escribís?</h2></div><button class="btn soft block" data-act="promo-open">Enviar promoción o flyer a varios clientes</button><div class="searchwrap">'+ic("search",20)+'<input id="wq" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="wapicklist">'+waPickList("")+'</div>');
 }
+function pixBox(hid){
+ return '<div id="pixbox" class="pixbox"'+(hid?' hidden':'')+'><div class="fgrid"><div class="field"><label for="f-brl">Monto en reales (R$)</label><input id="f-brl" type="number" inputmode="decimal" min="0" step="0.01"></div><div class="field"><label for="f-rate">1 real = $ pesos</label><input id="f-rate" type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(S.settings.rate||"")+'"></div></div><p id="pixcalc" class="hint">Escribí los reales y la cotización del día: la app calcula los pesos.</p></div>';
+}
+function pixVals(){var b=Number(val("f-brl")),r=Number(val("f-rate"));return {b:b,r:r,ok:b>0&&r>0,pesos:Math.round(b*r)}}
+function updPix(){
+ var v=pixVals(),c=$("#pixcalc");if(c)c.textContent=v.ok?"Equivale a $"+v.pesos.toLocaleString("es-AR")+" (se anota en Ingresos en pesos y en reales)":"Escribí los reales y la cotización del día: la app calcula los pesos.";
+ var m=$("#f-m");if(m&&m.value===PIX&&v.ok){["f-price","f-pprice"].forEach(function(id){var e=$("#"+id);if(e)e.value=v.pesos})}
+}
 function lastPrice(a){
  var l=S.moves.filter(function(m){return m.type==="in"&&m.svc===a.service&&m.amount>0}).sort(function(x,y){return y.date.localeCompare(x.date)})[0];
  return l?l.amount:(a.price>0?a.price:"");
@@ -764,9 +775,9 @@ function sheetAppt(id){
   var pm=memOpen(a.cid);
   if(pm)b+='<div class="card pkgcard"><b>Tiene paquete · quedan '+memLeft(pm)+' de '+pm.total+'</b><p class="sub">Vigente hasta el '+fmtD(pm.end)+'. Descontalo del paquete en vez de cobrar.</p><button class="btn ok block" data-act="use-pkg" data-id="'+a.id+'" data-n="1">'+ic("check",18)+'Descontar 1 uso</button>'+(memLeft(pm)>=2?'<button class="btn soft block" data-act="use-pkg" data-id="'+a.id+'" data-n="2">Descontar 2 usos (manos y pies)</button>':'')+'</div>';
   b+='<button class="btn primary block" data-act="reveal" data-target="payopts">Cobrar</button>'+
-   '<div id="payopts" hidden><div class="form"><div class="field"><label for="f-amt">Monto cobrado ($)</label><input id="f-amt" type="number" inputmode="numeric" min="0" value="'+lastPrice(a)+'"></div><div class="payopts">'+METHODS.map(function(m){return '<button class="btn soft" data-act="pay" data-id="'+a.id+'" data-m="'+m+'">'+m+'</button>'}).join("")+'</div></div></div>';
+   '<div id="payopts" hidden><div class="form"><div class="field"><label for="f-amt">Monto cobrado ($)</label><input id="f-amt" type="number" inputmode="numeric" min="0" value="'+lastPrice(a)+'"></div><div class="payopts">'+METHODS.filter(function(m){return m!==PIX}).map(function(m){return '<button class="btn soft" data-act="pay" data-id="'+a.id+'" data-m="'+m+'">'+m+'</button>'}).join("")+'</div><p class="eyebrow" style="margin-top:14px">Si te pagan en reales (Pix)</p>'+pixBox(false)+'<button class="btn soft block" data-act="pay-pix" data-id="'+a.id+'">Cobrar en Pix (reales)</button></div></div>';
  }
- if(st==="done")b+='<p class="sub">'+(a.pkg?"Descontado del paquete":"Cobrado "+money(a.price)+(mv?" · "+esc(mv.method):""))+'</p><button class="btn wa block" data-act="wa-compose" data-aid="'+a.id+'" data-k="gracias">'+ic("chat",18)+'Agradecer por WhatsApp</button><button class="btn soft block" data-act="unpay" data-id="'+a.id+'">Deshacer cobro</button>';
+ if(st==="done")b+='<p class="sub">'+(a.pkg?"Descontado del paquete":"Cobrado "+money(a.price)+(mv?" · "+esc(mlabel(mv)):""))+'</p><button class="btn wa block" data-act="wa-compose" data-aid="'+a.id+'" data-k="gracias">'+ic("chat",18)+'Agradecer por WhatsApp</button><button class="btn soft block" data-act="unpay" data-id="'+a.id+'">Deshacer cobro</button>';
  if(st!=="cancelled")b+='<div class="actions2"><button class="btn wa" data-act="wa-compose" data-aid="'+a.id+'" data-k="recordatorio">'+ic("chat",18)+'Enviar recordatorio</button><button class="btn soft" data-act="edit-appt" data-id="'+a.id+'">Editar / mover</button></div>';
  if(st==="cancelled")b+='<button class="btn soft block" data-act="reopen" data-id="'+a.id+'">Volver a agendar</button>';
  if(st==="pending"||st==="confirmed")b+='<button class="btn danger block" data-act="reveal" data-target="cancelbox">Cancelar turno</button><div id="cancelbox" class="confirmbox" hidden><span>¿Cancelar el turno de '+esc(nm(a))+'?</span><button class="btn danger block" data-act="cancel-appt" data-id="'+a.id+'">Sí, cancelar</button></div>';
@@ -866,7 +877,7 @@ function sheetSell(cid){
   '<div class="field"><label for="f-ppkg">Paquete</label><select id="f-ppkg">'+opts(S.packages,p.id,function(x){return x.name+" · "+x.uses+" usos · "+money(x.price)})+'</select></div>'+
   '<div class="fgrid"><div class="field"><label for="f-pstart">Desde</label><input id="f-pstart" type="date" value="'+T+'"></div><div class="field"><label for="f-pend">Vence</label><input id="f-pend" type="date" value="'+monthEnd(T)+'"></div></div>'+
   '<div class="fgrid"><div class="field"><label for="f-puses">Usos incluidos</label><input id="f-puses" type="number" inputmode="numeric" min="1" value="'+p.uses+'"></div><div class="field"><label for="f-pprice">Monto pagado ($)</label><input id="f-pprice" type="number" inputmode="numeric" min="0" value="'+p.price+'"></div></div>'+
-  '<div class="field"><label for="f-m">Medio de pago</label><select id="f-m">'+opts(METHODS,"Transferencia")+'</select></div>'+
+  '<div class="field"><label for="f-m">Medio de pago</label><select id="f-m">'+opts(METHODS,"Transferencia")+'</select></div>'+pixBox(true)+
   '<p class="hint">El pago se anota solo en Ingresos. Si ya lo habías cobrado antes, poné $0.</p>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-sell">Guardar paquete</button></div>');
 }
@@ -877,12 +888,13 @@ function saveSell(){
  if(!start||!end)return ferr("Elegí las fechas.");
  if(end<start)return ferr("El vencimiento no puede ser antes del inicio.");
  if(!(uses>=1))return ferr("Escribí cuántos usos incluye.");
+ var mth=val("f-m"),pxv=null;if(mth===PIX){pxv=pixVals();if(pxv.ok){amt=pxv.pesos;S.settings.rate=pxv.r}else{pxv=null;if(amt>0)return ferr("Escribí los reales y la cotización.")}}
  if(!(amt>=0))return ferr("El monto no puede ser negativo.");
  var c=S.clients.filter(function(x){return x.name.toLowerCase()===name.toLowerCase()})[0];
  if(!c){c={id:uid(),name:name,phone:"",service:"",birthday:"",notes:""};S.clients.push(c)}
  var m={id:uid(),cid:c.id,pkgId:p.id,name:p.name,start:start,end:end,total:uses,price:amt,usage:[]};
  S.memberships.push(m);
- if(amt>0)S.moves.push({id:uid(),date:T0(),type:"in",concept:p.name+" · "+c.name,method:val("f-m"),amount:amt,svc:"Paquetes",memId:m.id});
+ if(amt>0)S.moves.push({id:uid(),date:T0(),type:"in",concept:p.name+" · "+c.name,method:mth,amount:amt,svc:"Paquetes",memId:m.id,brl:pxv?pxv.b:undefined,rate:pxv?pxv.r:undefined});
  closeSheet();render();toast(c.phone?"Paquete guardado":"Paquete guardado. Falta cargar su WhatsApp");
 }
 function sheetPkg(id){
@@ -919,21 +931,22 @@ function saveSvc(id){
 function sheetMove(id,pt){
  var m=id?S.moves.filter(function(x){return x.id===id})[0]:null;
  if(m){
-  openSheet('<div class="sh-head"><div><p class="eyebrow">'+(m.type==="in"?"Ingreso":"Gasto")+' · '+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"long"}))+'</p><h2>'+esc(m.concept)+'</h2><p class="sub">'+esc(m.method)+'</p></div><span class="amt '+m.type+'" style="font-size:20px">'+(m.type==="in"?"+":"−")+money(m.amount)+'</span></div><button class="btn danger block" data-act="reveal" data-target="delbox">Eliminar movimiento</button><div id="delbox" class="confirmbox" hidden><span>'+(m.apptId?"El turno asociado vuelve a quedar sin cobrar.":"Este movimiento se borra de la caja.")+'</span><button class="btn danger block" data-act="del-move" data-id="'+m.id+'">Sí, eliminar</button></div>');
+  openSheet('<div class="sh-head"><div><p class="eyebrow">'+(m.type==="in"?"Ingreso":"Gasto")+' · '+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"long"}))+'</p><h2>'+esc(m.concept)+'</h2><p class="sub">'+esc(mlabel(m))+(m.brl&&m.rate?' · 1 R$ = $'+m.rate:'')+'</p></div><span class="amt '+m.type+'" style="font-size:20px">'+(m.type==="in"?"+":"−")+money(m.amount)+'</span></div><button class="btn danger block" data-act="reveal" data-target="delbox">Eliminar movimiento</button><div id="delbox" class="confirmbox" hidden><span>'+(m.apptId?"El turno asociado vuelve a quedar sin cobrar.":"Este movimiento se borra de la caja.")+'</span><button class="btn danger block" data-act="del-move" data-id="'+m.id+'">Sí, eliminar</button></div>');
   return;
  }
  openSheet('<h2>Nuevo movimiento</h2><div class="form"><div class="seg"><label><input type="radio" name="f-type" value="in"'+(pt==="out"?"":" checked")+'><span>Ingreso</span></label><label><input type="radio" name="f-type" value="out"'+(pt==="out"?" checked":"")+'><span>Gasto</span></label></div>'+
   '<div class="field"><label for="f-name">Concepto</label><input id="f-name" placeholder="Ej: Esmaltes, propina" autofocus></div>'+
-  '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div>'+
+  '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div>'+pixBox(true)+
   '<div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" value="'+T0()+'"></div>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-move">Guardar movimiento</button></div>');
 }
 function saveMove(){
  var name=val("f-name").trim(),amt=Number(val("f-price")),date=val("f-date"),t=document.querySelector("input[name=f-type]:checked");
  if(!name)return ferr("Escribí el concepto.");
+ var mth=val("f-m"),pxv=null;if(mth===PIX){pxv=pixVals();if(!pxv.ok)return ferr("Escribí los reales y la cotización.");amt=pxv.pesos;S.settings.rate=pxv.r}
  if(!(amt>0))return ferr("Escribí un monto mayor a cero.");
  if(!date)return ferr("Elegí la fecha.");
- S.moves.push({id:uid(),date:date,type:t?t.value:"in",concept:name,method:val("f-m"),amount:amt});
+ S.moves.push({id:uid(),date:date,type:t?t.value:"in",concept:name,method:mth,amount:amt,brl:pxv?pxv.b:undefined,rate:pxv?pxv.r:undefined});
  closeSheet();render();toast("Movimiento guardado");
 }
 function sheetSettings(){
@@ -947,6 +960,7 @@ function sheetSettings(){
   '<div class="card setcard"><b>Usarla como app</b>'+inst+'</div>'+
   '<div class="card setcard"><b>El estudio</b><div class="form"><div class="field"><label for="s-studio">Nombre (aparece en los mensajes)</label><input id="s-studio" value="'+esc(S.settings.studio)+'"></div><div class="fgrid"><div class="field"><label for="s-open">Abre</label><input id="s-open" type="time" value="'+esc(S.settings.open)+'"></div><div class="field"><label for="s-close">Cierra</label><input id="s-close" type="time" value="'+esc(S.settings.close)+'"></div></div></div></div>'+
   '<div class="card setcard"><b>Mensajes de WhatsApp</b><p class="hint">Podés cambiar el texto. Se completan solos: {nombre} {servicio} {dia} {hora} {estudio}.</p><div class="form">'+tpl+'</div><button class="btn soft block" data-act="tpl-reset">Volver a los textos originales</button></div>'+
+  '<div class="card setcard"><b>Cobros en reales (Pix)</b><div class="field"><label for="s-rate">Cotización habitual: 1 real = $ pesos</label><input id="s-rate" type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(S.settings.rate||"")+'"></div><p class="hint">Se usa como sugerencia al cobrar en Pix. Podés cambiarla en cada cobro.</p></div>'+
   '<div class="card setcard"><b>Clave de acceso</b><p class="sub">Tu agenda y tus clientes están solo en este celular: nadie más los ve, ni siquiera con el link de la app. Si querés, agregá una clave para que la pida al abrirla.</p><div class="field"><label for="s-pin">Clave de 4 números (opcional)</label><input id="s-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" value="'+esc(S.settings.pin||"")+'"></div><p class="hint">Antes de poner una, guardá una copia de seguridad: si te olvidás la clave, la copia es la forma de volver a entrar.</p></div>'+
   '<p id="ferr" class="ferr" role="alert"></p>'+
   '<button class="btn primary block" data-act="save-settings">Guardar ajustes</button>'+
@@ -957,7 +971,7 @@ function sheetSettings(){
 }
 function saveSettings(){
  var pin=val("s-pin").trim();if(pin&&!/^\d{4}$/.test(pin))return ferr("La clave son 4 números.");
- var st=S.settings;st.pin=pin;st.studio=val("s-studio").trim()||"Jessy Studio";st.open=val("s-open")||"09:00";st.close=val("s-close")||"19:00";
+ var st=S.settings;st.pin=pin;st.rate=Number(val("s-rate"))>0?Number(val("s-rate")):"";st.studio=val("s-studio").trim()||"Jessy Studio";st.open=val("s-open")||"09:00";st.close=val("s-close")||"19:00";
  if(mins(st.close)<=mins(st.open)){st.open="09:00";st.close="19:00"}
  st.tpl={};TPL_EDIT.forEach(function(k){var v=val("t-"+k).trim();if(v&&v!==TPL_DEFAULT[k])st.tpl[k]=v});
  closeSheet();render();toast("Ajustes guardados");
@@ -1129,6 +1143,8 @@ function act(a,d,el){
   case "confirm":x=apptById(d.id);x.status="confirmed";closeSheet();render();toast("Turno confirmado");break;
   case "pay":x=apptById(d.id);var am=Number(val("f-amt"));if(!(am>0)){toast("Escribí el monto cobrado");break}
    x.price=am;x.status="done";removeMove(x.id);S.moves.push({id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:am,apptId:x.id,svc:x.service});closeSheet();render();toast("Cobro registrado en ingresos");break;
+  case "pay-pix":x=apptById(d.id);var pv=pixVals();if(!pv.ok){toast("Escribí los reales y la cotización");break}
+   S.settings.rate=pv.r;x.price=pv.pesos;x.status="done";removeMove(x.id);S.moves.push({id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:PIX,amount:pv.pesos,brl:pv.b,rate:pv.r,apptId:x.id,svc:x.service});closeSheet();render();toast("Cobro en reales registrado");break;
   case "unpay":x=apptById(d.id);x.status="confirmed";removeMove(x.id);if(x.pkg){var um=memById(x.pkg);if(um)um.usage=um.usage.filter(function(u){return u.apptId!==x.id});delete x.pkg}closeSheet();render();toast("Cobro deshecho");break;
   case "cancel-appt":x=apptById(d.id);x.status="cancelled";closeSheet();render();toast("Turno cancelado");break;
   case "reopen":x=apptById(d.id);x.status="pending";closeSheet();render();toast("Turno vuelto a agendar");break;
@@ -1174,6 +1190,7 @@ document.addEventListener("input",function(e){
  if(id==="q")$("#clientlist").innerHTML=clientList(e.target.value);
  if(id==="wq")$("#wapicklist").innerHTML=waPickList(e.target.value);
  if(id==="wa-text")updWA();
+ if(id==="f-brl"||id==="f-rate")updPix();
  if(id==="f-name"&&$("#f-phone")&&!$("#f-phone").value){
   var c=S.clients.filter(function(x){return x.name.toLowerCase()===e.target.value.trim().toLowerCase()})[0];
   if(c&&c.phone)$("#f-phone").value=c.phone;
@@ -1189,6 +1206,7 @@ document.addEventListener("input",function(e){
 document.addEventListener("change",function(e){
  var t=e.target;
  if(t.hasAttribute&&t.hasAttribute("data-pc"))updPromo();
+ if(t.id==="f-m"){var pb=$("#pixbox");if(pb){var isP=t.value===PIX;pb.hidden=!isP;var pe=$("#f-price")||$("#f-pprice");if(pe){pe.readOnly=isP;if(isP)updPix()}}}
  if(t.id==="p-img"){var pv=$("#p-prev");pv.innerHTML="";var f=t.files&&t.files[0];if(f){var im=document.createElement("img");im.src=URL.createObjectURL(f);im.alt="Flyer";im.style.cssText="max-width:100%;max-height:260px;border-radius:12px;margin-top:8px;display:block";pv.appendChild(im)}}
 });
 $("#importfile").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)doImport(f);e.target.value=""});
