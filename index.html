@@ -351,10 +351,10 @@ var ic=function(n,s){s=s||20;return '<svg width="'+s+'" height="'+s+'" viewBox="
 
 /* ---------- Datos ---------- */
 var STORE="studioJessy.v3", S, tab="hoy", selDate=T0(), ack=false, per=30, wa=null, deferredInstall=null;
-var PIX="Pix (reales)";
-var METHODS=["Efectivo","Transferencia","Tarjeta",PIX];
+var METHODS=["Efectivo","Transferencia","Tarjeta","Pix"];
 var brl=function(n){return "R$ "+Number(n).toLocaleString("es-AR",{minimumFractionDigits:0,maximumFractionDigits:2})};
 var mlabel=function(m){return m.method+(m.brl?" · "+brl(m.brl):"")};
+var isBRL=function(){return val("f-cur")==="Reales"};
 var STATUS={pending:"Pendiente",confirmed:"Confirmado",done:"Cobrado",cancelled:"Cancelado"};
 var TPL_DEFAULT={
  recordatorio:"Hola {nombre} 💕 Te recordamos tu turno de {servicio} {dia} a las {hora} en {estudio}. ¿Confirmás que venís? ✨",
@@ -415,6 +415,7 @@ function seed(){
 }
 function normalize(o){
  if(!o||!o.appts||!o.clients||!o.services||!o.moves)return null;
+ o.moves.forEach(function(m){if(m.method==="Pix (reales)")m.method="Pix"});
  o.packages=o.packages||basePackages();o.memberships=o.memberships||[];
  o.settings=Object.assign(defaults(),o.settings||{});o.settings.tpl=o.settings.tpl||{};o.v=3;return o;
 }
@@ -668,6 +669,11 @@ function brkRows(g,total,withDot){
   return '<div class="brk '+(withDot?cat(x.k):"")+'"><div class="top"><span>'+(withDot?'<i class="dot '+cat(x.k)+'"></i>':'')+esc(x.k)+'</span><b class="amt">'+money(x.v)+'</b></div><div class="meter"><i style="width:'+pc+'%"></i></div><small class="sub">'+pc+'% del total</small></div>';
  }).join("")+'</div>';
 }
+function brlSection(inc){
+ var g={},tot=0,pes=0;inc.forEach(function(m){if(m.brl>0){g[m.method]=(g[m.method]||0)+m.brl;tot+=m.brl;pes+=m.amount}});
+ var ks=Object.keys(g);if(!ks.length)return "";
+ return '<section class="sec"><div class="sec-h"><h2>Cobrado en reales</h2></div><div class="card"><div class="brk"><div class="top"><span><b>Total en reales</b></span><b class="amt">'+brl(tot)+'</b></div><small class="sub">Equivale a '+money(pes)+' en pesos, ya sumado arriba</small></div>'+ks.sort(function(a,b){return g[b]-g[a]}).map(function(k){return '<div class="brk"><div class="top"><span>'+esc(k)+'</span><b class="amt">'+brl(g[k])+'</b></div></div>'}).join("")+'</div></section>';
+}
 function vCaja(){
  var T=T0(),from=addDays(T,-(per-1)),pt=addDays(from,-1),pf=addDays(from,-per);
  var inc=S.moves.filter(function(m){return m.type==="in"&&m.date>=from&&m.date<=T});
@@ -679,6 +685,7 @@ function vCaja(){
  return '<div class="stack"><div class="actions2"><button class="btn primary" data-act="new-move">'+ic("plus",18)+'Registrar ingreso</button><button class="btn soft" data-act="new-expense">'+ic("wallet",18)+'Registrar gasto</button></div>'+seg+
   '<section class="income"><div><p class="eyebrow">Ingresos · '+title+'</p><div class="num">'+money(ti)+'</div></div><div class="meta">'+(chg===null?'':'<span class="chg'+(chg<0?" neg":"")+'">'+(chg>=0?"+":"")+chg+'% vs. período anterior</span>')+'<span>'+inc.length+(inc.length===1?" cobro":" cobros")+'</span></div>'+
   '<div class="two"><div><small>Gastos</small><b>'+money(to)+'</b></div><div><small>Ganancia neta</small><b>'+money(ti-to)+'</b></div><div><small>Ticket promedio</small><b>'+money(avg)+'</b></div></div></section>'+
+  brlSection(inc)+
   '<section class="sec"><div class="sec-h"><h2>Evolución</h2></div><div class="card" style="padding:14px 12px 6px">'+chartSVG(buckets(per))+'</div></section>'+
   '<section class="sec"><div class="sec-h"><h2>Qué servicio deja más</h2></div>'+brkRows(groupSum(inc,function(m){return m.svc||"Otros"}),ti,true)+'</section>'+
   '<section class="sec"><div class="sec-h"><h2>Cómo te pagan</h2></div>'+brkRows(groupSum(inc,function(m){return m.method}),ti,false)+'</section>'+
@@ -756,14 +763,16 @@ function waPickList(q){
 function sheetWAPick(){
  openSheet('<div><p class="eyebrow">WhatsApp</p><h2>¿A quién le escribís?</h2></div><button class="btn soft block" data-act="promo-open">Enviar promoción o flyer a varios clientes</button><div class="searchwrap">'+ic("search",20)+'<input id="wq" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="wapicklist">'+waPickList("")+'</div>');
 }
+function curField(){return '<div class="field"><label for="f-cur">Moneda</label><select id="f-cur"><option value="Pesos">Pesos ($)</option><option value="Reales">Reales (R$)</option></select></div>'}
 function pixBox(hid){
  return '<div id="pixbox" class="pixbox"'+(hid?' hidden':'')+'><div class="fgrid"><div class="field"><label for="f-brl">Monto en reales (R$)</label><input id="f-brl" type="number" inputmode="decimal" min="0" step="0.01"></div><div class="field"><label for="f-rate">1 real = $ pesos</label><input id="f-rate" type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(S.settings.rate||"")+'"></div></div><p id="pixcalc" class="hint">Escribí los reales y la cotización del día: la app calcula los pesos.</p></div>';
 }
 function pixVals(){var b=Number(val("f-brl")),r=Number(val("f-rate"));return {b:b,r:r,ok:b>0&&r>0,pesos:Math.round(b*r)}}
 function updPix(){
  var v=pixVals(),c=$("#pixcalc");if(c)c.textContent=v.ok?"Equivale a $"+v.pesos.toLocaleString("es-AR")+" (se anota en Ingresos en pesos y en reales)":"Escribí los reales y la cotización del día: la app calcula los pesos.";
- var m=$("#f-m");if(m&&m.value===PIX&&v.ok){["f-price","f-pprice"].forEach(function(id){var e=$("#"+id);if(e)e.value=v.pesos})}
+ if(isBRL()&&v.ok){["f-price","f-pprice"].forEach(function(id){var e=$("#"+id);if(e)e.value=v.pesos})}
 }
+function curSync(){var pb=$("#pixbox");if(!pb)return;var r=isBRL();pb.hidden=!r;["f-price","f-pprice"].forEach(function(id){var e=$("#"+id);if(e)e.readOnly=r});if(r)updPix()}
 function lastPrice(a){
  var l=S.moves.filter(function(m){return m.type==="in"&&m.svc===a.service&&m.amount>0}).sort(function(x,y){return y.date.localeCompare(x.date)})[0];
  return l?l.amount:(a.price>0?a.price:"");
@@ -775,7 +784,7 @@ function sheetAppt(id){
   var pm=memOpen(a.cid);
   if(pm)b+='<div class="card pkgcard"><b>Tiene paquete · quedan '+memLeft(pm)+' de '+pm.total+'</b><p class="sub">Vigente hasta el '+fmtD(pm.end)+'. Descontalo del paquete en vez de cobrar.</p><button class="btn ok block" data-act="use-pkg" data-id="'+a.id+'" data-n="1">'+ic("check",18)+'Descontar 1 uso</button>'+(memLeft(pm)>=2?'<button class="btn soft block" data-act="use-pkg" data-id="'+a.id+'" data-n="2">Descontar 2 usos (manos y pies)</button>':'')+'</div>';
   b+='<button class="btn primary block" data-act="reveal" data-target="payopts">Cobrar</button>'+
-   '<div id="payopts" hidden><div class="form"><div class="field"><label for="f-amt">Monto cobrado ($)</label><input id="f-amt" type="number" inputmode="numeric" min="0" value="'+lastPrice(a)+'"></div><div class="payopts">'+METHODS.filter(function(m){return m!==PIX}).map(function(m){return '<button class="btn soft" data-act="pay" data-id="'+a.id+'" data-m="'+m+'">'+m+'</button>'}).join("")+'</div><p class="eyebrow" style="margin-top:14px">Si te pagan en reales (Pix)</p>'+pixBox(false)+'<button class="btn soft block" data-act="pay-pix" data-id="'+a.id+'">Cobrar en Pix (reales)</button></div></div>';
+   '<div id="payopts" hidden><div class="form"><div class="field"><label for="f-amt">Monto cobrado ($)</label><input id="f-amt" type="number" inputmode="numeric" min="0" value="'+lastPrice(a)+'"></div><div class="payopts">'+METHODS.map(function(m){return '<button class="btn soft" data-act="pay" data-id="'+a.id+'" data-m="'+m+'">'+m+'</button>'}).join("")+'</div><p class="eyebrow" style="margin-top:14px">Si te pagan en reales (R$)</p>'+pixBox(false)+'<div class="payopts">'+METHODS.map(function(m){return '<button class="btn soft" data-act="pay-brl" data-id="'+a.id+'" data-m="'+m+'">'+m+' en R$</button>'}).join("")+'</div></div></div>';
  }
  if(st==="done")b+='<p class="sub">'+(a.pkg?"Descontado del paquete":"Cobrado "+money(a.price)+(mv?" · "+esc(mlabel(mv)):""))+'</p><button class="btn wa block" data-act="wa-compose" data-aid="'+a.id+'" data-k="gracias">'+ic("chat",18)+'Agradecer por WhatsApp</button><button class="btn soft block" data-act="unpay" data-id="'+a.id+'">Deshacer cobro</button>';
  if(st!=="cancelled")b+='<div class="actions2"><button class="btn wa" data-act="wa-compose" data-aid="'+a.id+'" data-k="recordatorio">'+ic("chat",18)+'Enviar recordatorio</button><button class="btn soft" data-act="edit-appt" data-id="'+a.id+'">Editar / mover</button></div>';
@@ -877,7 +886,7 @@ function sheetSell(cid){
   '<div class="field"><label for="f-ppkg">Paquete</label><select id="f-ppkg">'+opts(S.packages,p.id,function(x){return x.name+" · "+x.uses+" usos · "+money(x.price)})+'</select></div>'+
   '<div class="fgrid"><div class="field"><label for="f-pstart">Desde</label><input id="f-pstart" type="date" value="'+T+'"></div><div class="field"><label for="f-pend">Vence</label><input id="f-pend" type="date" value="'+monthEnd(T)+'"></div></div>'+
   '<div class="fgrid"><div class="field"><label for="f-puses">Usos incluidos</label><input id="f-puses" type="number" inputmode="numeric" min="1" value="'+p.uses+'"></div><div class="field"><label for="f-pprice">Monto pagado ($)</label><input id="f-pprice" type="number" inputmode="numeric" min="0" value="'+p.price+'"></div></div>'+
-  '<div class="field"><label for="f-m">Medio de pago</label><select id="f-m">'+opts(METHODS,"Transferencia")+'</select></div>'+pixBox(true)+
+  '<div class="fgrid">'+curField()+'<div class="field"><label for="f-m">Medio de pago</label><select id="f-m">'+opts(METHODS,"Transferencia")+'</select></div></div>'+pixBox(true)+
   '<p class="hint">El pago se anota solo en Ingresos. Si ya lo habías cobrado antes, poné $0.</p>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-sell">Guardar paquete</button></div>');
 }
@@ -888,7 +897,7 @@ function saveSell(){
  if(!start||!end)return ferr("Elegí las fechas.");
  if(end<start)return ferr("El vencimiento no puede ser antes del inicio.");
  if(!(uses>=1))return ferr("Escribí cuántos usos incluye.");
- var mth=val("f-m"),pxv=null;if(mth===PIX){pxv=pixVals();if(pxv.ok){amt=pxv.pesos;S.settings.rate=pxv.r}else{pxv=null;if(amt>0)return ferr("Escribí los reales y la cotización.")}}
+ var mth=val("f-m"),pxv=null;if(isBRL()){pxv=pixVals();if(pxv.ok){amt=pxv.pesos;S.settings.rate=pxv.r}else{pxv=null;if(amt>0)return ferr("Escribí los reales y la cotización.")}}
  if(!(amt>=0))return ferr("El monto no puede ser negativo.");
  var c=S.clients.filter(function(x){return x.name.toLowerCase()===name.toLowerCase()})[0];
  if(!c){c={id:uid(),name:name,phone:"",service:"",birthday:"",notes:""};S.clients.push(c)}
@@ -936,14 +945,14 @@ function sheetMove(id,pt){
  }
  openSheet('<h2>Nuevo movimiento</h2><div class="form"><div class="seg"><label><input type="radio" name="f-type" value="in"'+(pt==="out"?"":" checked")+'><span>Ingreso</span></label><label><input type="radio" name="f-type" value="out"'+(pt==="out"?" checked":"")+'><span>Gasto</span></label></div>'+
   '<div class="field"><label for="f-name">Concepto</label><input id="f-name" placeholder="Ej: Esmaltes, propina" autofocus></div>'+
-  '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div>'+pixBox(true)+
+  '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div><div class="fgrid">'+curField()+'</div>'+pixBox(true)+
   '<div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" value="'+T0()+'"></div>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-move">Guardar movimiento</button></div>');
 }
 function saveMove(){
  var name=val("f-name").trim(),amt=Number(val("f-price")),date=val("f-date"),t=document.querySelector("input[name=f-type]:checked");
  if(!name)return ferr("Escribí el concepto.");
- var mth=val("f-m"),pxv=null;if(mth===PIX){pxv=pixVals();if(!pxv.ok)return ferr("Escribí los reales y la cotización.");amt=pxv.pesos;S.settings.rate=pxv.r}
+ var mth=val("f-m"),pxv=null;if(isBRL()){pxv=pixVals();if(!pxv.ok)return ferr("Escribí los reales y la cotización.");amt=pxv.pesos;S.settings.rate=pxv.r}
  if(!(amt>0))return ferr("Escribí un monto mayor a cero.");
  if(!date)return ferr("Elegí la fecha.");
  S.moves.push({id:uid(),date:date,type:t?t.value:"in",concept:name,method:mth,amount:amt,brl:pxv?pxv.b:undefined,rate:pxv?pxv.r:undefined});
@@ -1143,8 +1152,8 @@ function act(a,d,el){
   case "confirm":x=apptById(d.id);x.status="confirmed";closeSheet();render();toast("Turno confirmado");break;
   case "pay":x=apptById(d.id);var am=Number(val("f-amt"));if(!(am>0)){toast("Escribí el monto cobrado");break}
    x.price=am;x.status="done";removeMove(x.id);S.moves.push({id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:am,apptId:x.id,svc:x.service});closeSheet();render();toast("Cobro registrado en ingresos");break;
-  case "pay-pix":x=apptById(d.id);var pv=pixVals();if(!pv.ok){toast("Escribí los reales y la cotización");break}
-   S.settings.rate=pv.r;x.price=pv.pesos;x.status="done";removeMove(x.id);S.moves.push({id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:PIX,amount:pv.pesos,brl:pv.b,rate:pv.r,apptId:x.id,svc:x.service});closeSheet();render();toast("Cobro en reales registrado");break;
+  case "pay-brl":x=apptById(d.id);var pv=pixVals();if(!pv.ok){toast("Escribí los reales y la cotización");break}
+   S.settings.rate=pv.r;x.price=pv.pesos;x.status="done";removeMove(x.id);S.moves.push({id:uid(),date:T0(),type:"in",concept:x.service+" · "+nm(x),method:d.m,amount:pv.pesos,brl:pv.b,rate:pv.r,apptId:x.id,svc:x.service});closeSheet();render();toast("Cobro en reales registrado");break;
   case "unpay":x=apptById(d.id);x.status="confirmed";removeMove(x.id);if(x.pkg){var um=memById(x.pkg);if(um)um.usage=um.usage.filter(function(u){return u.apptId!==x.id});delete x.pkg}closeSheet();render();toast("Cobro deshecho");break;
   case "cancel-appt":x=apptById(d.id);x.status="cancelled";closeSheet();render();toast("Turno cancelado");break;
   case "reopen":x=apptById(d.id);x.status="pending";closeSheet();render();toast("Turno vuelto a agendar");break;
@@ -1206,7 +1215,8 @@ document.addEventListener("input",function(e){
 document.addEventListener("change",function(e){
  var t=e.target;
  if(t.hasAttribute&&t.hasAttribute("data-pc"))updPromo();
- if(t.id==="f-m"){var pb=$("#pixbox");if(pb){var isP=t.value===PIX;pb.hidden=!isP;var pe=$("#f-price")||$("#f-pprice");if(pe){pe.readOnly=isP;if(isP)updPix()}}}
+ if(t.id==="f-m"&&t.value==="Pix"&&$("#f-cur")){$("#f-cur").value="Reales";curSync()}
+ if(t.id==="f-cur")curSync();
  if(t.id==="p-img"){var pv=$("#p-prev");pv.innerHTML="";var f=t.files&&t.files[0];if(f){var im=document.createElement("img");im.src=URL.createObjectURL(f);im.alt="Flyer";im.style.cssText="max-width:100%;max-height:260px;border-radius:12px;margin-top:8px;display:block";pv.appendChild(im)}}
 });
 $("#importfile").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)doImport(f);e.target.value=""});
