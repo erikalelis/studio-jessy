@@ -168,7 +168,7 @@ svg{flex:none}
 
 .sheet{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center}
 .scrim{position:absolute;inset:0;background:rgba(30,15,22,.5)}
-.panel{position:relative;width:min(100%,600px);max-height:92%;overflow-y:auto;background:var(--bg);border-radius:26px 26px 0 0;padding:18px 16px calc(22px + var(--sab));display:flex;flex-direction:column;gap:16px;animation:up .22s ease-out;overscroll-behavior:contain}
+.xwrap{position:sticky;top:-8px;height:0;margin-bottom:-16px;z-index:5;align-self:stretch;display:flex;justify-content:flex-end}.xclose{width:40px;height:40px;margin:-4px -4px 0 0;border:0;border-radius:50%;background:var(--surface);color:var(--ink,#6b4350);font-size:26px;line-height:1;cursor:pointer;box-shadow:0 1px 6px rgba(120,60,80,.18)}.panel .sh-head{padding-right:44px}.panel{position:relative;width:min(100%,600px);max-height:92%;overflow-y:auto;background:var(--bg);border-radius:26px 26px 0 0;padding:18px 16px calc(22px + var(--sab));display:flex;flex-direction:column;gap:16px;animation:up .22s ease-out;overscroll-behavior:contain}
 @keyframes up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
 .grab{width:40px;height:4px;border-radius:4px;background:var(--line);align-self:center;margin-top:-6px;flex:none}
 .sh-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
@@ -703,9 +703,6 @@ function render(){
  var views={hoy:vHoy,agenda:vAgenda,clientas:vClientas,servicios:vServicios,caja:vCaja};
  $("#head").innerHTML=headHTML();
  $("#view").innerHTML=views[tab]();
- if(tab==="hoy"){/* el resumen de ingresos va debajo del próximo turno */
-  var ic0=document.createElement("div");ic0.innerHTML=incomeCard();var q=$("#view .quick");if(q&&q.parentNode)q.parentNode.insertBefore(ic0.firstChild,q.nextSibling);
- }
  $("#tabs").innerHTML=TABS.map(function(t){return '<button class="tab" data-act="tab" data-t="'+t[0]+'"'+(t[0]===tab?' aria-current="page"':'')+'>'+ic(t[2],22)+'<span>'+t[1]+'</span></button>'}).join("");
  var f=FABS[tab];$("#fab").innerHTML=ic("plus",22)+esc(f[0]);$("#fab").dataset.act=f[1];
  $("#clist").innerHTML=S.clients.map(function(c){return '<option value="'+esc(c.name)+'"></option>'}).join("");
@@ -715,7 +712,7 @@ function render(){
 }
 
 /* ---------- Hoja inferior ---------- */
-function openSheet(html){$("#panel").innerHTML='<div class="grab"></div>'+html;$("#sheet").hidden=false;$("#panel").scrollTop=0;var f=$("#panel").querySelector("[autofocus]");if(f)f.focus()}
+function openSheet(html){$("#panel").innerHTML='<div class="grab"></div><div class="xwrap"><button type="button" class="xclose" data-act="close" aria-label="Cerrar">&times;</button></div>'+html;$("#sheet").hidden=false;$("#panel").scrollTop=0;var f=$("#panel").querySelector("[autofocus]");if(f)f.focus()}
 function closeSheet(){$("#sheet").hidden=true;$("#panel").innerHTML="";ack=false;wa=null;if(swReload)setTimeout(function(){location.reload()},300)}
 var toastT;
 function toast(m){var t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove("on")},2400)}
@@ -735,7 +732,7 @@ function sheetWA(cid,aid,kind){
  var chips=kinds.map(function(k){return '<button class="chip" data-act="wa-kind" data-k="'+k+'" aria-pressed="'+(k===kind)+'">'+TPL_NAMES[k]+'</button>'}).join("");
  var ctx=a?'<p class="sub">Turno: '+esc(a.service)+' · '+esc(dayWord(a.date))+' '+a.time+'</p>':'';
  var go=waNumber(c.phone)
-  ?'<a id="wa-go" class="btn wa block" data-wa="'+(a?a.id:"")+'" href="#" target="_blank" rel="noopener">'+ic("chat",18)+'Abrir WhatsApp</a><button class="btn soft block" data-act="wa-copy">Copiar mensaje</button><p class="hint">Se abre el chat con el mensaje escrito. Si WhatsApp no muestra los emojis, tocá Copiar mensaje y pegalo en el chat.</p>'
+  ?'<a id="wa-go" class="btn wa block" data-wa="'+(a?a.id:"")+'" href="#" target="_blank" rel="noopener">'+ic("chat",18)+'Abrir WhatsApp</a><button class="btn soft block" data-act="wa-copy">Copiar mensaje</button><p class="hint">Se abre el chat con el mensaje escrito. Si WhatsApp no muestra los emojis, tocá Copiar mensaje y pegalo en el chat.</p><button class="btn soft block" data-act="home">Listo, volver al inicio</button>'
   :'<p class="note">Falta el número de WhatsApp de '+esc(c.name)+'.</p><button class="btn primary block" data-act="client" data-id="'+c.id+'">Cargar número</button>';
  openSheet('<div class="sh-head"><div><p class="eyebrow">Escribir por WhatsApp</p><h2>'+esc(c.name)+'</h2>'+ctx+'</div><div class="avatar">'+esc(c.name.charAt(0))+'</div></div><div class="chips" role="group" aria-label="Tipo de mensaje">'+chips+'</div><div class="field"><label for="wa-text">Mensaje</label><textarea id="wa-text">'+esc(wa.text)+'</textarea></div>'+go);
  updWA();
@@ -1110,6 +1107,7 @@ function act(a,d,el){
   case "mem-use":x=memById(d.id);if(x&&memLeft(x)>0){x.usage.push({id:uid(),date:T0(),apptId:"",n:1});render();sheetClient(x.cid);toast("Uso anotado. Quedan "+memLeft(x))}break;
   case "mem-undo":x=memById(d.id);if(x&&x.usage.length){var lu=x.usage.pop();if(lu.apptId){var la=apptById(lu.apptId);if(la&&la.pkg){la.status="confirmed";delete la.pkg}}render();sheetClient(x.cid);toast("Último uso deshecho")}break;
   case "del-mem":x=memById(d.id);if(x){S.appts.forEach(function(q){if(q.pkg===x.id){q.status="confirmed";delete q.pkg}});S.memberships=S.memberships.filter(function(q){return q.id!==x.id});var cc=x.cid;render();sheetClient(cc);toast("Paquete eliminado")}break;
+  case "home":tab="hoy";closeSheet();render();window.scrollTo(0,0);break;
   case "tab":tab=d.t;closeSheet();render();window.scrollTo(0,0);break;
   case "go-agenda":tab="agenda";aMode="dia";selDate=T0();render();window.scrollTo(0,0);break;
   case "day":selDate=d.d;render();break;
