@@ -162,6 +162,7 @@ svg{flex:none}
 
 .chips{display:flex;gap:8px;overflow-x:auto;margin-inline:-16px;padding:2px 16px 4px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
+.chip.add{background:transparent;border:1px dashed var(--muted);color:var(--muted)}
 .chip{flex:none;min-height:40px;padding:0 14px;border-radius:99px;background:var(--surface2);color:var(--ink);font-weight:600;font-size:14px;border:1px solid transparent;font-variant-numeric:tabular-nums}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .chips.wrap{flex-wrap:wrap;overflow:visible;margin-inline:0;padding-inline:0}
@@ -355,7 +356,7 @@ var METHODS=["Efectivo","Transferencia","Tarjeta","Pix"];
 var brl=function(n){return "R$ "+Number(n).toLocaleString("es-AR",{minimumFractionDigits:0,maximumFractionDigits:2})};
 var mlabel=function(m){return m.method};
 var isBRL=function(){return val("f-cur")==="Reales"};
-var vcur="ARS",selSids=[],selMv=[],mvOther=false;
+var svcRet=null,vcur="ARS",selSids=[],selMv=[],mvOther=false;
 var selSvcs=function(){return selSids.map(function(i){return svcById(i)}).filter(Boolean)};
 var svcNames=function(m){return m.svcs&&m.svcs.length?m.svcs:String(m.svc||"Otros").split(" + ")};
 var mkMin=function(n){var h=Math.floor(n/60),r=n%60;return (h?h+" h":"")+(h&&r?" ":"")+(r?r+" min":"")};
@@ -640,10 +641,11 @@ function vClientas(){
  return '<div class="stack"><button class="btn soft block" data-act="promo-open">'+ic("chat",18)+'Enviar promoción o flyer a varios clientes</button>'+bsec+pk+'<div class="searchwrap">'+ic("search",20)+'<input id="q" class="search" type="search" placeholder="Buscar cliente" autocomplete="off"></div><div id="clientlist">'+clientList("")+'</div></div>';
 }
 function vServicios(){
- if(!S.services.length)return '<div class="card empty">Todavía no cargaste servicios.<button class="btn primary" data-act="new-svc">'+ic("plus",18)+'Nuevo servicio</button></div>';
- return '<div class="stack"><div class="list">'+S.services.map(function(s){
-  return '<button class="row" data-act="svc" data-id="'+s.id+'"><span class="who"><b><i class="dot '+cat(s.name)+'"></i>'+esc(s.name)+'</b></span><span class="chev">'+ic("chev",18)+'</span></button>';
- }).join("")+'</div><p class="hint">Tocá un servicio para cambiarle el nombre.</p>'+pkgSection()+'</div>';
+ var add='<button class="btn primary block" data-act="new-svc">'+ic("plus",18)+'Agregar servicio</button>';
+ if(!S.services.length)return '<div class="card empty">Todavía no cargaste servicios.</div>'+add;
+ return '<div class="stack">'+add+'<div class="list">'+S.services.map(function(s){
+  return '<button class="row" data-act="svc" data-id="'+s.id+'"><span class="who"><b><i class="dot '+cat(s.name)+'"></i>'+esc(s.name)+'</b><small>'+mkMin(s.min)+(s.price>0?' · '+money(s.price):'')+'</small></span><span class="chev">'+ic("chev",18)+'</span></button>';
+ }).join("")+'</div><p class="hint">Agregá los servicios que hagas. Tocá uno para cambiarle el nombre, la duración o el precio.</p>'+pkgSection()+'</div>';
 }
 function pkgSection(){
  var T=T0();
@@ -734,7 +736,7 @@ function render(){
 
 /* ---------- Hoja inferior ---------- */
 function openSheet(html){$("#panel").innerHTML='<div class="grab"></div><div class="xwrap"><button type="button" class="xclose" data-act="close" aria-label="Cerrar">&times;</button></div>'+html;$("#sheet").hidden=false;$("#panel").scrollTop=0;var f=$("#panel").querySelector("[autofocus]");if(f)f.focus()}
-function closeSheet(){$("#sheet").hidden=true;$("#panel").innerHTML="";ack=false;wa=null;if(swReload)setTimeout(function(){location.reload()},300)}
+function closeSheet(){$("#sheet").hidden=true;$("#panel").innerHTML="";ack=false;wa=null;svcRet=null;if(swReload)setTimeout(function(){location.reload()},300)}
 var toastT;
 function toast(m){var t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(function(){t.classList.remove("on")},2400)}
 var val=function(id){var e=document.getElementById(id);return e?e.value:""};
@@ -820,14 +822,15 @@ function slotsHTML(){
  return '<div class="chips" role="group" aria-label="Horarios libres">'+sl.map(function(t){return '<button class="chip" data-act="slot" data-t="'+t+'" aria-pressed="'+(t===cur)+'">'+t+'</button>'}).join("")+'</div>';
 }
 function refreshSlots(){var e=$("#slots");if(e)e.innerHTML=slotsHTML()}
-function svcChipsHTML(){return S.services.map(function(x){return '<button type="button" class="chip" data-act="svc-toggle" data-id="'+x.id+'" aria-pressed="'+(selSids.indexOf(x.id)>-1)+'">'+esc(x.name)+'</button>'}).join("")}
+function svcChipsHTML(){return S.services.map(function(x){return '<button type="button" class="chip" data-act="svc-toggle" data-id="'+x.id+'" aria-pressed="'+(selSids.indexOf(x.id)>-1)+'">'+esc(x.name)+'</button>'}).join("")+'<button type="button" class="chip add" data-act="svc-new-from-appt">+ Nuevo servicio</button>'}
 function refreshSvc(){var c=$("#svcchips");if(c)c.innerHTML=svcChipsHTML();var t=$("#svctot"),ss=selSvcs();if(t)t.textContent=ss.length>1?"Son "+ss.length+" servicios · duración total "+mkMin(ss.reduce(function(a,x){return a+x.min},0)):"";refreshSlots()}
-function mvChipsHTML(){return S.services.map(function(x){return '<button type="button" class="chip" data-act="mv-toggle" data-n="'+esc(x.name)+'" aria-pressed="'+(selMv.indexOf(x.name)>-1)+'">'+esc(x.name)+'</button>'}).join("")+'<button type="button" class="chip" data-act="mv-other" aria-pressed="'+mvOther+'">Otro…</button>'}
+function mvChipsHTML(){return S.services.map(function(x){return '<button type="button" class="chip" data-act="mv-toggle" data-n="'+esc(x.name)+'" aria-pressed="'+(selMv.indexOf(x.name)>-1)+'">'+esc(x.name)+'</button>'}).join("")+'<button type="button" class="chip" data-act="mv-other" aria-pressed="'+mvOther+'">Otro…</button><button type="button" class="chip add" data-act="svc-new-from-move">+ Nuevo servicio</button>'}
 function sheetApptForm(id,pre){
  pre=pre||{};var a=id?apptById(id):null;ack=false;
  var name=a?nm(a):(pre.name||""),c=a?clientById(a.cid):(pre.cid?clientById(pre.cid):null);
  var phone=c?c.phone:"",sid=a?a.sid:(pre.sid||(S.services[0]&&S.services[0].id)),date=a?a.date:(pre.date||(selDate<T0()?T0():selDate)),time=a?a.time:(pre.time||"");
- selSids=(a&&a.sids&&a.sids.length?a.sids.slice():[sid]).filter(function(i){return svcById(i)});if(!selSids.length&&S.services[0])selSids=[S.services[0].id];
+ if(pre.ov){name=pre.ov.name;phone=pre.ov.phone;date=pre.ov.date;time=pre.ov.time;sid=pre.ov.sids[0]}
+ selSids=(pre.ov?pre.ov.sids.slice():(a&&a.sids&&a.sids.length?a.sids.slice():[sid])).filter(function(i){return svcById(i)});if(!selSids.length&&S.services[0])selSids=[S.services[0].id];
  if(!S.services.length){openSheet('<h2>Primero cargá un servicio</h2><p class="sub">Para agendar un turno necesitás al menos un servicio con precio y duración.</p><button class="btn primary block" data-act="new-svc">Cargar servicio</button>');return}
  openSheet('<h2>'+(a?"Editar turno":"Nuevo turno")+'</h2><div class="form">'+
   '<div class="field"><label for="f-name">Cliente</label><input id="f-name" list="clist" autocomplete="off" autocapitalize="words" value="'+esc(name)+'" placeholder="Nombre" '+(a||name?"":"autofocus")+'></div>'+
@@ -835,7 +838,7 @@ function sheetApptForm(id,pre){
   '<div class="field"><span class="lab">Servicios (podés marcar varios)</span><div class="chips" id="svcchips">'+svcChipsHTML()+'</div><p class="hint" id="svctot"></p></div>'+
   '<div class="fgrid"><div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" value="'+date+'"></div><div class="field"><label for="f-time">Hora</label><input id="f-time" type="time" value="'+time+'"></div></div>'+
   '<div class="field"><span class="lab">Horarios libres</span><div id="slots"></div></div>'+
-  '<div class="field"><label for="f-note">Nota (opcional)</label><input id="f-note" value="'+esc(a?a.note:"")+'" placeholder="Ej: trae diseño de referencia"></div>'+
+  '<div class="field"><label for="f-note">Nota (opcional)</label><input id="f-note" value="'+esc(pre.ov?pre.ov.note:(a?a.note:""))+'" placeholder="Ej: trae diseño de referencia"></div>'+
   '<p id="ferr" class="ferr" role="alert"></p>'+
   '<button id="f-save" class="btn primary block" data-act="save-appt" data-id="'+(a?a.id:"")+'">Guardar turno</button></div>');
  refreshSvc();
@@ -938,33 +941,45 @@ function savePkg(id){
  q.name=name;q.uses=uses;q.price=price;
  closeSheet();render();toast("Paquete guardado");
 }
+function durOpts(cur){var l=[];for(var m=15;m<=300;m+=15)l.push(m);if(l.indexOf(cur)<0){l.push(cur);l.sort(function(x,y){return x-y})}return l.map(function(m){return '<option value="'+m+'"'+(m===cur?' selected':'')+'>'+mkMin(m)+'</option>'}).join("")}
 function sheetSvc(id){
  var s=id?svcById(id):null;
  openSheet('<h2>'+(s?"Editar servicio":"Nuevo servicio")+'</h2><div class="form">'+
-  '<div class="field"><label for="f-name">Nombre</label><input id="f-name" value="'+esc(s?s.name:"")+'" '+(s?"":"autofocus")+'></div>'+
+  '<div class="field"><label for="f-name">Nombre</label><input id="f-name" placeholder="Ej: Spa de pies" autocapitalize="sentences" value="'+esc(s?s.name:"")+'" '+(s?"":"autofocus")+'></div>'+
+  '<div class="fgrid"><div class="field"><label for="f-smin">Duración</label><select id="f-smin">'+durOpts(s?s.min:60)+'</select></div><div class="field"><label for="f-sprice">Precio ($) · opcional</label><input id="f-sprice" type="number" inputmode="numeric" min="0" value="'+(s&&s.price>0?s.price:"")+'"></div></div>'+
+  '<p class="hint">La duración se usa para ver los horarios libres al agendar.</p>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-svc" data-id="'+(s?s.id:"")+'">Guardar servicio</button></div>'+
   (s?'<button class="btn danger block" data-act="reveal" data-target="delbox">Eliminar servicio</button><div id="delbox" class="confirmbox" hidden><span>Los turnos ya cargados conservan su nombre.</span><button class="btn danger block" data-act="del-svc" data-id="'+s.id+'">Sí, eliminar</button></div>':''));
 }
 function saveSvc(id){
- var name=val("f-name").trim();
+ var name=val("f-name").trim(),min=Number(val("f-smin"))||60,price=Number(val("f-sprice"))||0;
  if(!name)return ferr("Escribí el nombre del servicio.");
- var s=id?svcById(id):null;if(!s){s={id:uid(),min:60,price:0};S.services.push(s)}
- s.name=name;
- closeSheet();render();toast("Servicio guardado");
+ if(S.services.some(function(x){return x.id!==id&&x.name.toLowerCase()===name.toLowerCase()}))return ferr("Ya tenés un servicio con ese nombre.");
+ var s=id?svcById(id):null,isNew=!s;if(!s){s={id:uid()};S.services.push(s)}
+ s.name=name;s.min=min;s.price=price;
+ var r=svcRet;svcRet=null;
+ if(isNew&&r){
+  toast("Servicio agregado");
+  if(r.kind==="appt"){r.pre.ov.sids.push(s.id);sheetApptForm(r.id||null,r.pre)}
+  else{r.ov.selMv.push(s.name);sheetMove(null,r.ov.type,r.ov)}
+  return;
+ }
+ closeSheet();render();toast(isNew?"Servicio agregado":"Servicio guardado");
 }
-function sheetMove(id,pt){
+function sheetMove(id,pt,pre){
  var m=id?S.moves.filter(function(x){return x.id===id})[0]:null;
  if(m){
   openSheet('<div class="sh-head"><div><p class="eyebrow">'+(m.type==="in"?"Ingreso":"Gasto")+' · '+esc(parse(m.date).toLocaleDateString("es-AR",{day:"numeric",month:"long"}))+'</p><h2>'+esc(m.concept)+'</h2><p class="sub">'+esc(mlabel(m))+'</p></div><span class="amt '+m.type+'" style="font-size:20px">'+(m.type==="in"?"+":"−")+fmv(m)+'</span></div><button class="btn danger block" data-act="reveal" data-target="delbox">Eliminar movimiento</button><div id="delbox" class="confirmbox" hidden><span>'+(m.apptId?"El turno asociado vuelve a quedar sin cobrar.":"Este movimiento se borra de la caja.")+'</span><button class="btn danger block" data-act="del-move" data-id="'+m.id+'">Sí, eliminar</button></div>');
   return;
  }
- selMv=[];mvOther=false;
+ if(pre){selMv=pre.selMv.slice();mvOther=pre.mvOther;pt=pre.type}else{selMv=[];mvOther=false}
  openSheet('<h2>Nuevo movimiento</h2><div class="form"><div class="seg"><label><input type="radio" name="f-type" value="in"'+(pt==="out"?"":" checked")+'><span>Ingreso</span></label><label><input type="radio" name="f-type" value="out"'+(pt==="out"?" checked":"")+'><span>Gasto</span></label></div>'+
   '<div class="field" id="cn-sel"'+(pt==="out"?" hidden":"")+'><span class="lab">Servicios (podés marcar varios)</span><div class="chips" id="mvchips">'+mvChipsHTML()+'</div></div>'+
   '<div class="field" id="cn-txt"'+(pt==="out"?"":" hidden")+'><label for="f-name">Concepto</label><input id="f-name" placeholder="Ej: Esmaltes, propina"></div>'+
   '<div class="fgrid"><div class="field"><label for="f-price">Monto ($)</label><input id="f-price" type="number" inputmode="numeric" min="0"></div><div class="field"><label for="f-m">Medio</label><select id="f-m">'+opts(METHODS,"Efectivo")+'</select></div></div><div class="fgrid">'+curField()+'</div>'+
   '<div class="field"><label for="f-date">Fecha</label><input id="f-date" type="date" value="'+T0()+'"></div>'+
   '<p id="ferr" class="ferr" role="alert"></p><button class="btn primary block" data-act="save-move">Guardar movimiento</button></div>');
+ if(pre){var q=function(i){return document.getElementById(i)};q("f-name").value=pre.name;q("f-price").value=pre.price;q("f-m").value=pre.method;q("f-cur").value=pre.cur;q("f-date").value=pre.date;curSync();q("f-price").value=pre.price;conSync()}
 }
 function conSync(){
  var t=document.querySelector("input[name=f-type]:checked");if(!$("#cn-sel"))return;
@@ -1173,6 +1188,8 @@ function act(a,d,el){
   case "save-appt":saveAppt(d.id||null);break;
   case "slot":x=$("#f-time");if(x)x.value=d.t;refreshSlots();break;
   case "confirm":x=apptById(d.id);x.status="confirmed";closeSheet();render();toast("Turno confirmado");break;
+  case "svc-new-from-appt":svcRet={kind:"appt",id:($("#f-save")&&$("#f-save").dataset.id)||"",pre:{ov:{name:val("f-name"),phone:val("f-phone"),date:val("f-date"),time:val("f-time"),note:val("f-note"),sids:selSids.slice()}}};sheetSvc(null);break;
+  case "svc-new-from-move":var mt=document.querySelector("input[name=f-type]:checked");svcRet={kind:"move",ov:{type:mt?mt.value:"in",selMv:selMv.slice(),mvOther:mvOther,name:val("f-name"),price:val("f-price"),method:val("f-m"),cur:val("f-cur"),date:val("f-date")}};sheetSvc(null);break;
   case "svc-toggle":var ix=selSids.indexOf(d.id);if(ix>-1){if(selSids.length>1)selSids.splice(ix,1)}else selSids.push(d.id);ack=false;refreshSvc();break;
   case "mv-toggle":var jx=selMv.indexOf(d.n);if(jx>-1)selMv.splice(jx,1);else selMv.push(d.n);var mvc=$("#mvchips");if(mvc)mvc.innerHTML=mvChipsHTML();break;
   case "mv-other":mvOther=!mvOther;var mvc2=$("#mvchips");if(mvc2)mvc2.innerHTML=mvChipsHTML();conSync();if(mvOther&&$("#f-name"))$("#f-name").focus();break;
@@ -1187,7 +1204,7 @@ function act(a,d,el){
   case "save-client":saveClient(d.id||null);break;
   case "del-client":S.appts=S.appts.filter(function(a2){return !(a2.cid===d.id&&(a2.status==="pending"||a2.status==="confirmed"))});S.clients=S.clients.filter(function(c){return c.id!==d.id});S.memberships=S.memberships.filter(function(m){return m.cid!==d.id});closeSheet();render();toast("Cliente eliminado");break;
   case "svc":sheetSvc(d.id);break;
-  case "new-svc":sheetSvc(null);break;
+  case "new-svc":svcRet=null;sheetSvc(null);break;
   case "save-svc":saveSvc(d.id||null);break;
   case "del-svc":S.services=S.services.filter(function(s){return s.id!==d.id});closeSheet();render();toast("Servicio eliminado");break;
   case "move":sheetMove(d.id);break;
